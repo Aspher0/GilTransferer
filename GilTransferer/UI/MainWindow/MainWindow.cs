@@ -1,7 +1,9 @@
 using Dalamud.Bindings.ImGui;
+using Dalamud.Interface;
 using Dalamud.Interface.Windowing;
 using GilTransferer.Enums;
 using GilTransferer.Models;
+using NoireLib.Helpers;
 using System;
 using System.Collections.Generic;
 using System.Numerics;
@@ -32,6 +34,17 @@ public partial class MainWindow : Window, IDisposable
         {
             MinimumSize = new Vector2(725, 600),
             MaximumSize = new Vector2(float.MaxValue, float.MaxValue)
+        };
+
+        TitleBarButtons = new()
+        {
+            new()
+            {
+                Click = (c) => { SystemHelper.OpenUrl("https://ko-fi.com/aspher0"); },
+                Icon = FontAwesomeIcon.Coffee,
+                ShowTooltip = () => { ImGui.SetTooltip("Support me on Ko-fi, Make me Happy\nThank you ♥"); },
+                IconOffset = new Vector2(2, 2),
+            },
         };
     }
 

@@ -44,4 +44,11 @@ public static class Service
         TextAdvanceIPC.DisableExternalControl();
         LifestreamIPC.Move([]);
     }
+
+    public static void Dispose()
+    {
+        AutoRetainerAPI.Dispose();
+        StopQueue();
+        KeyedThrottler.Clear();
+    }
 }

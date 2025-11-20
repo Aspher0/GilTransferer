@@ -210,7 +210,7 @@ public sealed class Plugin : IDalamudPlugin
 
         NoireService.CommandManager.RemoveHandler(CommandName);
 
-        Service.AutoRetainerAPI.Dispose();
+        Service.Dispose();
 
         NoireLibMain.Dispose();
         ECommonsMain.Dispose();
