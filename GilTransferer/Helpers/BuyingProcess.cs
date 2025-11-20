@@ -1,0 +1,561 @@
+using Dalamud.Game.ClientState.Conditions;
+using Dalamud.Game.ClientState.Objects.SubKinds;
+using Dalamud.Utility;
+using ECommons;
+using ECommons.DalamudServices.Legacy;
+using ECommons.GameFunctions;
+using FFXIVClientStructs.FFXIV.Client.Game.Control;
+using FFXIVClientStructs.FFXIV.Component.GUI;
+using GilTransferer.Enums;
+using GilTransferer.Models;
+using Lumina.Excel.Sheets;
+using NoireLib;
+using NoireLib.Helpers;
+using NoireLib.Helpers.ObjectExtensions;
+using NoireLib.TaskQueue;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Numerics;
+using Callback = ECommons.Automation.Callback;
+
+namespace GilTransferer.Helpers;
+
+/// <summary>
+/// Provides the necessary to process character purchases for mannequins in the game.
+/// </summary>
+public static class BuyingProcess
+{
+    /// <summary>
+    ///  Processes all character purchases for the given receiver.
+    /// </summary>
+    public static void ProcessAllCharacterPurchases(Receiver? receiver)
+    {
+        if (receiver == null || Service.LifestreamIPC.IsBusy())
+            return;
+
+        foreach (var mannequin in receiver.Mannequins)
+        {
+            foreach (var (slotType, mannequinSlot) in mannequin.Slots)
+            {
+                if (mannequinSlot.AssignedCharacter == null)
+                    continue;
+
+                var finalPriceSlot = CommonHelper.GetFinalPriceOfSlot(slotType, mannequinSlot);
+                if (finalPriceSlot == null)
+                    continue;
+
+                ProcessCharacterPurchase(receiver, mannequin, slotType, mannequinSlot);
+            }
+        }
+
+        Service.TaskQueue.StartQueue();
+    }
+
+    /// <summary>
+    /// Automates the process of purchasing an item from a mannequin for a specified character.
+    /// </summary>
+    // Can probably remove SlotType argument since it's also in mannequinSlot, but whatever
+    // also, could make it so that it can process multiple slots at once per character
+    private static unsafe void ProcessCharacterPurchase(Receiver receiver, Mannequin mannequin, SlotType slotType, MannequinSlot mannequinSlot)
+    {
+        var assignedCharacter = mannequinSlot.AssignedCharacter!;
+
+        TaskBuilder.Create($"Login to {assignedCharacter!.FullName}")
+            .WithAction(task =>
+            {
+                var localPlayer = NoireService.ClientState.LocalPlayer;
+                if (localPlayer != null && localPlayer.Name.TextValue == assignedCharacter.PlayerName &&
+                    localPlayer.HomeWorld.Value.Name.ExtractText() == assignedCharacter.Homeworld)
+                {
+                    return;
+                }
+
+                var errorCode = Service.LifestreamIPC.ChangeCharacter(assignedCharacter.PlayerName, assignedCharacter.Homeworld);
+                if (errorCode != ErrorCode.Success)
+                    throw new Exception($"Failed to change character: {errorCode}");
+            })
+            .OnFailedOrCancelled((task, ex) =>
+            {
+                // Somehow skip this char and move on
+                // No idea how to do that yet
+            })
+            .WithCondition(task =>
+            {
+                var localPlayer = NoireService.ClientState.LocalPlayer;
+
+                if (localPlayer == null)
+                    return false;
+
+                bool isCorrectPlayer = localPlayer.Name.TextValue == assignedCharacter.PlayerName &&
+                       localPlayer.HomeWorld.Value.Name.ExtractText() == assignedCharacter.Homeworld;
+
+                bool occupied = NoireService.Condition.Any(ConditionFlag.BetweenAreas);
+
+                return isCorrectPlayer && !occupied;
+            })
+            .EnqueueTo(Service.TaskQueue);
+
+        TaskBuilder.AddDelayMilliseconds(2000, Service.TaskQueue);
+
+        TaskBuilder.Create($"Moving to world {receiver.ReceivingPlayer.Homeworld}")
+            .WithAction(task =>
+            {
+                var localPlayer = NoireService.ClientState.LocalPlayer;
+                if (localPlayer != null && localPlayer.CurrentWorld.Value.Name.ExtractText() == receiver.ReceivingPlayer.Homeworld)
+                {
+                    return;
+                }
+
+                Service.LifestreamIPC.ChangeWorld(receiver.ReceivingPlayer.Homeworld);
+            })
+            .WithCondition(task =>
+            {
+                var localPlayer = NoireService.ClientState.LocalPlayer;
+
+                if (localPlayer == null)
+                    return false;
+
+                bool correctWorld = localPlayer.CurrentWorld.Value.Name.ExtractText() == receiver.ReceivingPlayer.Homeworld;
+                bool occupied = NoireService.Condition.Any(ConditionFlag.BetweenAreas);
+
+                return correctWorld && !occupied;
+            })
+            .EnqueueTo(Service.TaskQueue);
+
+        TaskBuilder.AddDelayMilliseconds(2000, Service.TaskQueue);
+
+        TaskBuilder.Create($"Moving to world {receiver.PlayerForEstateTP.Homeworld}")
+            .WithAction(task =>
+            {
+                ChatHelper.SendMessage($"/estatelist {receiver.PlayerForEstateTP.PlayerName}");
+            })
+            .WithCondition(task =>
+            {
+                if (!GenericHelpers.TryGetAddonByName<AtkUnitBase>("TeleportHousingFriend", out var addon) || !GenericHelpers.IsAddonReady(addon))
+                    return false;
+
+                return true;
+            })
+            .WithRetries(2, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5))
+            .EnqueueTo(Service.TaskQueue);
+
+        TaskBuilder.AddDelayMilliseconds(500, Service.TaskQueue);
+
+        TaskBuilder.Create($"Getting Estate Tp for {assignedCharacter.UniqueId}")
+            .WithCondition(task =>
+            {
+                if (!GenericHelpers.TryGetAddonByName<AtkUnitBase>("TeleportHousingFriend", out var addon) || !GenericHelpers.IsAddonReady(addon))
+                    return false;
+
+                List<int> nodeIndexes = [2];
+
+                for (int i = 21001; i < 21020; i++) // 20 ? To be sure it's been found
+                {
+                    nodeIndexes.Add(i);
+                }
+
+                foreach (var nodeIndex in nodeIndexes)
+                {
+                    var node = GenericHelpers.GetNodeByIDChain(addon->RootNode, 1, 6, 8, nodeIndex, 5);
+
+                    if (node != null)
+                    {
+                        var nodeText = node->GetAsAtkTextNode()->NodeText.GetText();
+                        if (!nodeText.IsNullOrWhitespace())
+                        {
+                            if (nodeText == "Free Company Estate" && (receiver.DestinationType == DestinationType.FreeCompany || receiver.DestinationType == DestinationType.FCChamber))
+                            {
+                                Callback.Fire(addon, true, 0); // Callback for FC is 0
+                                return true;
+                            }
+                            else if (nodeText == "Apartments" && receiver.DestinationType == DestinationType.Apartment)
+                            {
+                                Callback.Fire(addon, true, 2); // Callback for apartment is 2
+                                return true;
+                            }
+                            else if (nodeText == "Private Estate" && receiver.DestinationType == DestinationType.Private)
+                            {
+                                Callback.Fire(addon, true, 1); // Callback for private estate is 1
+                                return true;
+                            }
+                        }
+                    }
+                }
+
+                return false;
+            })
+            .EnqueueTo(Service.TaskQueue);
+
+        TaskBuilder.AddDelayMilliseconds(2000, Service.TaskQueue);
+
+        TaskBuilder.Create("Waiting to be available")
+            .WithCondition(task =>
+            {
+                var localPlayer = NoireService.ClientState.LocalPlayer;
+
+                if (localPlayer == null)
+                    return false;
+
+                bool occupied = NoireService.Condition.Any(ConditionFlag.BetweenAreas);
+
+                var territoryId = NoireService.ClientState.TerritoryType;
+                if (!(ExcelSheetHelper.GetSheet<TerritoryType>()?.TryGetRow(territoryId, out var territoryRow) ?? false))
+                    return false;
+
+                bool isInRightArea = !receiver.DestinationOutsideTerritoryId.HasValue || (territoryRow.RowId == receiver.DestinationOutsideTerritoryId.Value);
+
+                return isInRightArea && !occupied;
+            })
+            .EnqueueTo(Service.TaskQueue);
+
+        TaskBuilder.AddDelayMilliseconds(500, Service.TaskQueue);
+
+        // Initially to check if in the right plot, but this check has been removed
+        // Now it's used as a "security" to make sure the closest door is the one in the plot I guess?
+        TaskBuilder.Create("Moving forward a bit")
+            .WithAction(CommonHelper.MoveForward)
+            .WithCondition(() => !Service.LifestreamIPC.IsBusy())
+            .EnqueueTo(Service.TaskQueue);
+
+        TaskBuilder.Create("Find House Entrance & Enter")
+            .WithCondition(() =>
+            {
+                var localPlayer = NoireService.ClientState.LocalPlayer;
+
+                if (localPlayer == null)
+                    return false;
+
+                var foundEntrance = NoireService.ObjectTable.OrderBy(x => Vector3.Distance(x.Position, localPlayer.Position))
+                    .First(x => Vector3.Distance(x.Position, localPlayer.Position) < 20 && (x.BaseId == (uint)EntranceType.EstateEntrance || x.BaseId == (uint)EntranceType.ApartmentEntrance));
+
+                if (foundEntrance == null)
+                    return false;
+
+                if (!foundEntrance.IsTarget())
+                    NoireService.TargetManager.SetTarget(foundEntrance);
+
+                // Could use LifestreamIPC.Move but Limiana does it like this and i'm a shameless follower
+                ChatHelper.SendMessage("/lockon");
+                ChatHelper.SendMessage("/automove on");
+
+                return true;
+            })
+            .EnqueueTo(Service.TaskQueue);
+
+        TaskBuilder.AddDelayMilliseconds(500, Service.TaskQueue);
+
+        TaskBuilder.Create("Waiting to be near door")
+            .WithCondition(() =>
+            {
+                var localPlayer = NoireService.ClientState.LocalPlayer;
+
+                if (localPlayer == null)
+                    return false;
+
+                var target = NoireService.TargetManager.Target;
+                return target == null || Vector3.Distance(target.Position, localPlayer.Position) < 3.5f;
+            })
+            .EnqueueTo(Service.TaskQueue);
+
+        TaskBuilder.AddDelayMilliseconds(500, Service.TaskQueue);
+
+        TaskBuilder.Create("Enter House")
+            .WithAction(() =>
+            {
+                ChatHelper.SendMessage("/automove off");
+
+                var target = NoireService.TargetManager.Target;
+                TargetSystem.Instance()->InteractWithObject(target.Struct(), false);
+            })
+            .WithCondition(() =>
+            {
+                var localPlayer = NoireService.ClientState.LocalPlayer;
+
+                if (localPlayer == null)
+                    return false;
+
+                bool occupied = NoireService.Condition.Any(ConditionFlag.BetweenAreas);
+
+                var territoryId = NoireService.ClientState.TerritoryType;
+                if (!(ExcelSheetHelper.GetSheet<TerritoryType>()?.TryGetRow(territoryId, out var territoryRow) ?? false))
+                    return false;
+
+                bool isInRightArea = !receiver.DestinationIndoorTerritoryId.HasValue || (territoryRow.RowId == receiver.DestinationIndoorTerritoryId.Value);
+                var foundEntrance = NoireService.ObjectTable.FirstOrDefault(x => x.BaseId == (uint)EntranceType.WorkshopEntrance);
+
+                return isInRightArea && !occupied && foundEntrance != default;
+            })
+            .EnqueueTo(Service.TaskQueue);
+
+        TaskBuilder.AddDelayMilliseconds(2000, Service.TaskQueue);
+
+        TaskBuilder.Create("Target and move to workshop entrance")
+            .WithCondition(task =>
+            {
+                var localPlayer = NoireService.ClientState.LocalPlayer;
+                if (localPlayer == null)
+                    return false;
+
+                var foundEntrance = NoireService.ObjectTable.FirstOrDefault(x => x.BaseId == (uint)EntranceType.WorkshopEntrance);
+                if (foundEntrance == default)
+                    return false;
+
+                if (!foundEntrance.IsTarget())
+                    NoireService.TargetManager.SetTarget(foundEntrance);
+
+                ChatHelper.SendMessage("/lockon");
+                ChatHelper.SendMessage("/automove on");
+                return true;
+            })
+            .EnqueueTo(Service.TaskQueue);
+
+        TaskBuilder.Create()
+            .WithCondition(task =>
+            {
+                var localPlayer = NoireService.ClientState.LocalPlayer;
+                if (localPlayer == null)
+                    return false;
+
+                var target = NoireService.TargetManager.Target ?? null;
+                return target == null || Vector3.Distance(target.Position, localPlayer.Position) < 3.5f;
+            })
+            .EnqueueTo(Service.TaskQueue);
+
+        TaskBuilder.Create("Interact with door")
+            .WithAction(() =>
+            {
+                ChatHelper.SendMessage("/automove off");
+
+                var target = NoireService.TargetManager.Target ?? null;
+                if (target != null && target.BaseId == (uint)EntranceType.WorkshopEntrance)
+                    TargetSystem.Instance()->InteractWithObject(target.Struct(), false);
+            })
+            .WithCondition(task =>
+            {
+                if (!GenericHelpers.TryGetAddonByName<AtkUnitBase>("SelectString", out var addon) || !GenericHelpers.IsAddonReady(addon))
+                    return false;
+
+                List<int> nodeIndexes = [5];
+
+                for (int i = 51001; i < 51020; i++) // 20 ? To be sure it's been found
+                {
+                    nodeIndexes.Add(i);
+                }
+
+                foreach (var nodeIndex in nodeIndexes)
+                {
+                    var node = GenericHelpers.GetNodeByIDChain(addon->RootNode, 1, 3, nodeIndex, 2);
+
+                    if (node != null)
+                    {
+                        var nodeText = node->GetAsAtkTextNode()->NodeText.GetText();
+                        if (!nodeText.IsNullOrWhitespace())
+                        {
+                            if (nodeText == "Move to specified private chambers")
+                            {
+                                Callback.Fire(addon, true, (nodeIndex == 5 ? 0 : nodeIndex - 51000));
+                                return true;
+                            }
+                        }
+                    }
+                }
+
+                return false;
+            })
+            .WithRetries(5, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(1))
+            .EnqueueTo(Service.TaskQueue);
+
+        TaskBuilder.AddDelayMilliseconds(500, Service.TaskQueue);
+
+        TaskBuilder.Create("Select room range on the left")
+            .WithCondition(task =>
+            {
+                if (!GenericHelpers.TryGetAddonByName<AtkUnitBase>("HousingSelectRoom", out var addon) || !GenericHelpers.IsAddonReady(addon))
+                    return false;
+
+                double room = receiver.ChamberOrApartmentNumber;
+                var roomRangeIndex = Math.Floor((room - 1) / 15);
+
+                Callback.Fire(addon, true, 1, (int)roomRangeIndex);
+                return true;
+            })
+            .EnqueueTo(Service.TaskQueue);
+
+        TaskBuilder.AddDelayMilliseconds(500, Service.TaskQueue);
+
+        TaskBuilder.Create("Select room range on the left")
+            .WithCondition(task =>
+            {
+                if (!GenericHelpers.TryGetAddonByName<AtkUnitBase>("HousingSelectRoom", out var addon) || !GenericHelpers.IsAddonReady(addon))
+                    return false;
+
+                double room = receiver.ChamberOrApartmentNumber;
+                var roomIndex = (room - 1) % 15;
+
+                Callback.Fire(addon, true, 0, (int)roomIndex);
+                return true;
+            })
+            .EnqueueTo(Service.TaskQueue);
+
+        TaskBuilder.AddDelayMilliseconds(500, Service.TaskQueue);
+
+        TaskBuilder.Create("Select the room on the right and enter it")
+            .WithCondition(task =>
+            {
+                if (!GenericHelpers.TryGetAddonByName<AtkUnitBase>("SelectYesno", out var addon) || !GenericHelpers.IsAddonReady(addon))
+                    return false;
+
+                Callback.Fire(addon, true, 0);
+                return true;
+            })
+            .EnqueueTo(Service.TaskQueue);
+
+        TaskBuilder.AddDelayMilliseconds(500, Service.TaskQueue);
+
+        TaskBuilder.Create("Waiting to be inside the FC room")
+            .WithCondition(task =>
+            {
+                var localPlayer = NoireService.ClientState.LocalPlayer;
+
+                if (localPlayer == null)
+                    return false;
+
+                bool occupied = NoireService.Condition.Any(ConditionFlag.BetweenAreas);
+
+                var allNpcs = NoireService.ObjectTable.OfType<INpc>();
+                var foundNpc = allNpcs.FirstOrDefault((npc) =>
+                {
+                    var native = CharacterHelper.GetCharacterAddress(npc);
+                    return npc.BaseId == mannequin.BaseId && native->CompanionOwnerId == mannequin.CompanionOwnerId;
+                });
+
+                if (foundNpc.IsDefault())
+                {
+                    foundNpc = allNpcs.FirstOrDefault((npc) =>
+                    {
+                        return npc.BaseId == mannequin.BaseId &&
+                               Vector3.Distance(npc.Position, mannequin.Position) < 0.3f;
+                    });
+                }
+
+                if (foundNpc == default)
+                    return false;
+
+                return !occupied;
+            })
+            .EnqueueTo(Service.TaskQueue);
+
+        TaskBuilder.AddDelayMilliseconds(500, Service.TaskQueue);
+
+        TaskBuilder.Create("Target and move to Mannequin")
+            .WithAction(task =>
+            {
+                var allNpcs = NoireService.ObjectTable.OfType<INpc>();
+                var foundNpc = allNpcs.FirstOrDefault((npc) =>
+                {
+                    var native = CharacterHelper.GetCharacterAddress(npc);
+                    return npc.BaseId == mannequin.BaseId && native->CompanionOwnerId == mannequin.CompanionOwnerId;
+                });
+
+                task.Metadata = foundNpc;
+
+                NoireService.TargetManager.SetTarget(foundNpc!);
+                Service.LifestreamIPC.Move([foundNpc!.Position]);
+            })
+            .WithCondition(task =>
+            {
+                var npc = task.Metadata as INpc;
+
+                if (NoireService.ClientState.LocalPlayer == null || npc == null)
+                    return false;
+
+                if (Vector3.Distance(NoireService.ClientState.LocalPlayer.Position, npc.Position) < 3.5f)
+                {
+                    Service.LifestreamIPC.Move([]);
+                    return true;
+                }
+
+                return false;
+            })
+            .WithTimeout(TimeSpan.FromSeconds(15))
+            .EnqueueTo(Service.TaskQueue);
+
+        TaskBuilder.AddDelayMilliseconds(1000, Service.TaskQueue);
+
+        TaskBuilder.Create("Select Right Slot")
+            .WithAction(() =>
+            {
+                var target = NoireService.TargetManager.Target;
+                if (target != null && target.BaseId == mannequin.BaseId)
+                    TargetSystem.Instance()->InteractWithObject(target.Struct(), false);
+            })
+            .WithCondition(task =>
+            {
+                if (!GenericHelpers.TryGetAddonByName<AtkUnitBase>("MerchantShop", out var addon) || !GenericHelpers.IsAddonReady(addon))
+                    return false;
+                return true;
+            })
+            .WithRetries(5, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(1))
+            .WithRetryAction(() =>
+            {
+                var target = NoireService.TargetManager.Target;
+
+                if (target == null)
+                {
+                    var npc = TaskBuilder.GetMetadataFromTask<INpc>(Service.TaskQueue, "Target and move to Mannequin");
+
+                    if (npc == null)
+                        return;
+
+                    NoireService.TargetManager.SetTarget(npc);
+                }
+
+                if (target != null && target.BaseId == mannequin.BaseId)
+                    TargetSystem.Instance()->InteractWithObject(target.Struct(), false);
+            })
+            .EnqueueTo(Service.TaskQueue);
+
+        TaskBuilder.AddDelayMilliseconds(500, Service.TaskQueue);
+
+        TaskBuilder.Create("Select Right Slot")
+            .WithCondition(task =>
+            {
+                if (!GenericHelpers.TryGetAddonByName<AtkUnitBase>("MerchantShop", out var addon) || !GenericHelpers.IsAddonReady(addon))
+                    return false;
+
+                var mask = CommonHelper.SlotsToMask([(int)slotType]);
+                Callback.Fire(addon, true, 15, mask);
+                return true;
+            })
+            .EnqueueTo(Service.TaskQueue);
+
+        TaskBuilder.AddDelayMilliseconds(500, Service.TaskQueue);
+
+        TaskBuilder.Create("Press the purchase button")
+            .WithCondition(task =>
+            {
+                if (!GenericHelpers.TryGetAddonByName<AtkUnitBase>("MerchantShop", out var addon) || !GenericHelpers.IsAddonReady(addon))
+                    return false;
+
+                Callback.Fire(addon, true, 14, 0);
+                return true;
+            })
+            .EnqueueTo(Service.TaskQueue);
+
+        TaskBuilder.AddDelayMilliseconds(500, Service.TaskQueue);
+
+        TaskBuilder.Create("Confirm the purchase")
+            .WithCondition(task =>
+            {
+                if (!GenericHelpers.TryGetAddonByName<AtkUnitBase>("SelectYesno", out var addon) || !GenericHelpers.IsAddonReady(addon))
+                    return false;
+
+                Callback.Fire(addon, true, 0);
+                return true;
+            })
+            .EnqueueTo(Service.TaskQueue);
+
+        TaskBuilder.AddDelayMilliseconds(500, Service.TaskQueue);
+    }
+}
