@@ -33,7 +33,7 @@ public partial class MainWindow
 
             foreach (SlotType slotType in Enum.GetValues<SlotType>())
             {
-                using (var id = ImRaii.PushId((int)slotType))
+                using (ImRaii.PushId((int)slotType))
                 {
                     ImGui.AlignTextToFramePadding();
                     ImGui.TextUnformatted($"{slotType}:");
@@ -57,17 +57,17 @@ public partial class MainWindow
 
                                 using (var contex = ImRaii.ContextPopupItem($"##ItemContext{slotType}"))
                                 {
-                                    if (!contex)
-                                        continue;
-
-                                    var itemName = item.Value.Name.ExtractText();
-                                    ImGui.TextUnformatted($"Item: {itemName}");
-                                    ImGui.Separator();
-
-                                    if (ImGui.MenuItem("Remove Item"))
+                                    if (contex)
                                     {
-                                        Configuration.Instance.ItemsPerSlot.Remove(slotType);
-                                        Configuration.Instance.Save();
+                                        var itemName = item.Value.Name.ExtractText();
+                                        ImGui.TextUnformatted($"Item: {itemName}");
+                                        ImGui.Separator();
+
+                                        if (ImGui.MenuItem("Remove Item"))
+                                        {
+                                            Configuration.Instance.ItemsPerSlot.Remove(slotType);
+                                            Configuration.Instance.Save();
+                                        }
                                     }
                                 }
 
@@ -93,13 +93,13 @@ public partial class MainWindow
 
                             using (var contex = ImRaii.ContextPopupItem($"##ItemContext{slotType}"))
                             {
-                                if (!contex)
-                                    continue;
-
-                                if (ImGui.MenuItem("Remove Invalid Item"))
+                                if (contex)
                                 {
-                                    Configuration.Instance.ItemsPerSlot.Remove(slotType);
-                                    Configuration.Instance.Save();
+                                    if (ImGui.MenuItem("Remove Invalid Item"))
+                                    {
+                                        Configuration.Instance.ItemsPerSlot.Remove(slotType);
+                                        Configuration.Instance.Save();
+                                    }
                                 }
                             }
                         }

@@ -38,7 +38,7 @@ public partial class MainWindow
                     var mannequin = _selectedScenario.Mannequins[i];
                     bool isSelected = _selectedMannequinIndex == i;
 
-                    using (var id = ImRaii.PushId(i))
+                    using (ImRaii.PushId(i))
                     {
                         var isTargeted = (NoireService.TargetManager.Target is INpc targetNpc2 &&
                                          targetNpc2.BaseId == mannequin.BaseId &&
@@ -55,29 +55,27 @@ public partial class MainWindow
 
                         using (var contex = ImRaii.ContextPopupItem($"##MannequinContext{i}"))
                         {
-                            if (!contex)
-                                continue;
-
-                            using (ImRaii.Disabled(!ctrlShiftHeld))
+                            if (contex)
                             {
-                                if (ImGui.MenuItem("Delete"))
+                                using (ImRaii.Disabled(!ctrlShiftHeld))
                                 {
-                                    _selectedScenario.Mannequins.RemoveAt(i);
-                                    Configuration.Instance.Save();
-                                    if (_selectedMannequinIndex == i)
+                                    if (ImGui.MenuItem("Delete"))
                                     {
-                                        _selectedMannequinIndex = -1;
-                                        _selectedMannequin = null;
+                                        _selectedScenario.Mannequins.RemoveAt(i);
+                                        Configuration.Instance.Save();
+                                        if (_selectedMannequinIndex == i)
+                                        {
+                                            _selectedMannequinIndex = -1;
+                                            _selectedMannequin = null;
+                                        }
+                                        return;
                                     }
-                                    return;
+                                }
+                                if (!ctrlShiftHeld && ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+                                {
+                                    ImGui.SetTooltip("Hold CTRL and Shift to delete");
                                 }
                             }
-                            if (!ctrlShiftHeld && ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
-                            {
-                                ImGui.SetTooltip("Hold CTRL and Shift to delete");
-                            }
-
-                            //ImGui.EndPopup();
                         }
                     }
                 }
@@ -156,7 +154,7 @@ public partial class MainWindow
                                 _selectedMannequin.Slots[slotType] = slot;
                             }
 
-                            using (var id = ImRaii.PushId((int)slotType))
+                            using (ImRaii.PushId((int)slotType))
                             {
                                 ImGui.AlignTextToFramePadding();
                                 var cursorPos = ImGui.GetCursorPos();

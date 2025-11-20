@@ -60,7 +60,7 @@ public partial class MainWindow
                     var scenario = scenarios[i];
                     bool isSelected = _selectedScenarioIndex == i;
 
-                    using (var id = ImRaii.PushId(i))
+                    using (ImRaii.PushId(i))
                     {
                         if (ImGui.Selectable($"##Scenario{i}", isSelected, ImGuiSelectableFlags.None, new Vector2(0, 40)))
                         {

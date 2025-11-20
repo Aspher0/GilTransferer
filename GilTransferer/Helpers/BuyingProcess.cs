@@ -235,7 +235,7 @@ public static class BuyingProcess
                 if (!foundEntrance.IsTarget())
                     NoireService.TargetManager.SetTarget(foundEntrance);
 
-                // Could use LifestreamIPC.Move but Limiana does it like this and i'm a shameless follower
+                // Could use LifestreamIPC.Move but lifestream itself does it like this and i'm a shameless follower
                 ChatHelper.SendMessage("/lockon");
                 ChatHelper.SendMessage("/automove on");
 

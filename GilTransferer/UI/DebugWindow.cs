@@ -86,7 +86,7 @@ public class DebugWindow : Window, IDisposable
 
         if (Service.AutoRetainerAPI.Ready)
         {
-            using (var child = ImRaii.Child("##AutoRetainerAPIChild", new Vector2(-1, 200), true))
+            using (ImRaii.Child("##AutoRetainerAPIChild", new Vector2(-1, 200), true))
             {
                 var CIDs = Service.RegisteredCharacters;
 
