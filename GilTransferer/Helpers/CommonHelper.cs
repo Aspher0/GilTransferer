@@ -133,15 +133,13 @@ public static class CommonHelper
         if (assignedCharacter == null || !Configuration.Instance.ItemsPerSlot.ContainsKey(slotType) || !assignedCharacter.ContentId.HasValue)
             return null;
 
-        uint gils = 0;
-
         var data = Service.GetOfflineCharacterData(assignedCharacter.ContentId.Value);
         if (data == null)
             return null;
 
-        gils = data.Gil;
+        var gils = data.Gil;
 
-        if (gils < Math.Min(Configuration.Instance.GilsToLeaveOnCharacters, Configuration.Instance.MinGilsToConsiderCharacters))
+        if (gils < Math.Max(Configuration.Instance.GilsToLeaveOnCharacters, Configuration.Instance.MinGilsToConsiderCharacters))
             return null;
 
         var finalPriceOfSlot = gils - Configuration.Instance.GilsToLeaveOnCharacters;
