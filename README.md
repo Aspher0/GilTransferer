@@ -8,7 +8,7 @@ Relies on TextAdvance, Lifestream, AutoRetainer and SimpleTweaks' `/estatelist` 
 - Find a better way to wait for territory change (instead of having to specify the territory id of indoors/outdoors)
 - Correctly use Lifestream to change DC (I believe right now it will login to the character, then if it needs to change DC it will logout again and change)
 - Remove unnecessary TaskQueue delays (Make processing faster overall)
-- Make the process of setting up mannequins better, right now there are a few tasks failing when setting up, not all cases are covered. It only slows the process but doesn't seem to completely block the process.
+- Make the process of setting up mannequins better, right now there are a few tasks failing when setting up, not all cases are covered. It only slows the process but doesn't seem to completely block/softlock/fail it.
 - Make the process of setting up mannequins more automatic (TP to estate/room/apartment if not inside already)
 - Move some of the settings from the Scenario settings to the Mannequin settings, for example the destination type, player for estate TP, room number (etc...), instead of being global to the scenario, should be per mannequin in case they are in separate places.
 - Related to above task: have an option to also specify the estate ward/plot a mannequin is in so if 2 mannequins are in the same FC estate but different FC rooms, so that instead of TPing to estate/address again, it will just change room.
