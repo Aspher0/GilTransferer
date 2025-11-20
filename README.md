@@ -21,4 +21,5 @@ Relies on TextAdvance, Lifestream, AutoRetainer and SimpleTweaks' `/estatelist` 
 - Add a skip current task button in case of stalling, for "manual debugging" ?
 - Add a button to process the whole scenaro (Setup Mannequin, then process buyers)
 - Add post processing on seller, buyer, autoretainer post process and all buyers complet (When a character finishes buying, when the seller finishes setting up mannequin, when all buyers have bought all slots or on autoretainer post process when you finish sending submarines etc: send a command, move somewhere, do something ...)
+- Maybe try to remove the Simple Tweaks' `/estatelist` dependency? Maybe bring the tweak's source code to GilTransferer so it's not dependant on it anymore. Idk.
 - Add usage instructions
