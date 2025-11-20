@@ -12,7 +12,7 @@ Relies on TextAdvance, Lifestream, AutoRetainer and SimpleTweaks' `/estatelist` 
 - Make the process of setting up mannequins more automatic (TP to estate/room/apartment if not inside already)
 - Move some of the settings from the Scenario settings to the Mannequin settings, for example the destination type, player for estate TP, room number (etc...), instead of being global to the scenario, should be per mannequin in case they are in separate places.
 - Related to above task: have an option to also specify the estate ward/plot a mannequin is in so if 2 mannequins are in the same FC estate but different FC rooms, so that instead of TPing to estate/address again, it will just change room.
-- Before setting up a mannequin, check if the retainer has space left (the 20 slots to sell) AND if the retainer is not gil capped (if gil capped, it will go to void)
+- Before setting up a mannequin, check if the retainer has space left (the 20 slots to sell) AND if the retainer is not gil capped (if gil capped, it will go to void, we dont want our precious money to vanish)
 - Have an option to TP with lifestream address book instead.
 - In the mannequin settings, when setting up the character assigned to a slot, be able to override the amount of gils to send.
 - Make it so you process all assigned slots on a character before changing character.
