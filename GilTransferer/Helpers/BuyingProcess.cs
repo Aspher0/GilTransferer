@@ -27,14 +27,14 @@ namespace GilTransferer.Helpers;
 public static class BuyingProcess
 {
     /// <summary>
-    ///  Processes all character purchases for the given receiver.
+    ///  Processes all character purchases for the given scenario.
     /// </summary>
-    public static void ProcessAllCharacterPurchases(Receiver? receiver)
+    public static void ProcessAllCharacterPurchases(Scenario? scenario)
     {
-        if (receiver == null || Service.LifestreamIPC.IsBusy())
+        if (scenario == null || Service.LifestreamIPC.IsBusy())
             return;
 
-        foreach (var mannequin in receiver.Mannequins)
+        foreach (var mannequin in scenario.Mannequins)
         {
             foreach (var (slotType, mannequinSlot) in mannequin.Slots)
             {
@@ -45,7 +45,7 @@ public static class BuyingProcess
                 if (finalPriceSlot == null)
                     continue;
 
-                ProcessCharacterPurchase(receiver, mannequin, slotType, mannequinSlot);
+                ProcessCharacterPurchase(scenario, mannequin, slotType, mannequinSlot);
             }
         }
 
@@ -57,7 +57,7 @@ public static class BuyingProcess
     /// </summary>
     // Can probably remove SlotType argument since it's also in mannequinSlot, but whatever
     // also, could make it so that it can process multiple slots at once per character
-    private static unsafe void ProcessCharacterPurchase(Receiver receiver, Mannequin mannequin, SlotType slotType, MannequinSlot mannequinSlot)
+    private static unsafe void ProcessCharacterPurchase(Scenario scenario, Mannequin mannequin, SlotType slotType, MannequinSlot mannequinSlot)
     {
         var assignedCharacter = mannequinSlot.AssignedCharacter!;
 
@@ -98,16 +98,16 @@ public static class BuyingProcess
 
         TaskBuilder.AddDelayMilliseconds(2000, Service.TaskQueue);
 
-        TaskBuilder.Create($"Moving to world {receiver.ReceivingPlayer.Homeworld}")
+        TaskBuilder.Create($"Moving to world {scenario.PlayerForEstateTP.Homeworld}")
             .WithAction(task =>
             {
                 var localPlayer = NoireService.ClientState.LocalPlayer;
-                if (localPlayer != null && localPlayer.CurrentWorld.Value.Name.ExtractText() == receiver.ReceivingPlayer.Homeworld)
+                if (localPlayer != null && localPlayer.CurrentWorld.Value.Name.ExtractText() == scenario.PlayerForEstateTP.Homeworld)
                 {
                     return;
                 }
 
-                Service.LifestreamIPC.ChangeWorld(receiver.ReceivingPlayer.Homeworld);
+                Service.LifestreamIPC.ChangeWorld(scenario.PlayerForEstateTP.Homeworld);
             })
             .WithCondition(task =>
             {
@@ -116,7 +116,7 @@ public static class BuyingProcess
                 if (localPlayer == null)
                     return false;
 
-                bool correctWorld = localPlayer.CurrentWorld.Value.Name.ExtractText() == receiver.ReceivingPlayer.Homeworld;
+                bool correctWorld = localPlayer.CurrentWorld.Value.Name.ExtractText() == scenario.PlayerForEstateTP.Homeworld;
                 bool occupied = NoireService.Condition.Any(ConditionFlag.BetweenAreas);
 
                 return correctWorld && !occupied;
@@ -125,10 +125,10 @@ public static class BuyingProcess
 
         TaskBuilder.AddDelayMilliseconds(2000, Service.TaskQueue);
 
-        TaskBuilder.Create($"Moving to world {receiver.PlayerForEstateTP.Homeworld}")
+        TaskBuilder.Create($"Moving to world {scenario.PlayerForEstateTP.Homeworld}")
             .WithAction(task =>
             {
-                ChatHelper.SendMessage($"/estatelist {receiver.PlayerForEstateTP.PlayerName}");
+                ChatHelper.SendMessage($"/estatelist {scenario.PlayerForEstateTP.PlayerName}");
             })
             .WithCondition(task =>
             {
@@ -164,17 +164,17 @@ public static class BuyingProcess
                         var nodeText = node->GetAsAtkTextNode()->NodeText.GetText();
                         if (!nodeText.IsNullOrWhitespace())
                         {
-                            if (nodeText == "Free Company Estate" && (receiver.DestinationType == DestinationType.FreeCompany || receiver.DestinationType == DestinationType.FCChamber))
+                            if (nodeText == "Free Company Estate" && (scenario.DestinationType == DestinationType.FreeCompany || scenario.DestinationType == DestinationType.FCChamber))
                             {
                                 Callback.Fire(addon, true, 0); // Callback for FC is 0
                                 return true;
                             }
-                            else if (nodeText == "Apartments" && receiver.DestinationType == DestinationType.Apartment)
+                            else if (nodeText == "Apartments" && scenario.DestinationType == DestinationType.Apartment)
                             {
                                 Callback.Fire(addon, true, 2); // Callback for apartment is 2
                                 return true;
                             }
-                            else if (nodeText == "Private Estate" && receiver.DestinationType == DestinationType.Private)
+                            else if (nodeText == "Private Estate" && scenario.DestinationType == DestinationType.Private)
                             {
                                 Callback.Fire(addon, true, 1); // Callback for private estate is 1
                                 return true;
@@ -203,7 +203,7 @@ public static class BuyingProcess
                 if (!(ExcelSheetHelper.GetSheet<TerritoryType>()?.TryGetRow(territoryId, out var territoryRow) ?? false))
                     return false;
 
-                bool isInRightArea = !receiver.DestinationOutsideTerritoryId.HasValue || (territoryRow.RowId == receiver.DestinationOutsideTerritoryId.Value);
+                bool isInRightArea = !scenario.DestinationOutsideTerritoryId.HasValue || (territoryRow.RowId == scenario.DestinationOutsideTerritoryId.Value);
 
                 return isInRightArea && !occupied;
             })
@@ -281,7 +281,7 @@ public static class BuyingProcess
                 if (!(ExcelSheetHelper.GetSheet<TerritoryType>()?.TryGetRow(territoryId, out var territoryRow) ?? false))
                     return false;
 
-                bool isInRightArea = !receiver.DestinationIndoorTerritoryId.HasValue || (territoryRow.RowId == receiver.DestinationIndoorTerritoryId.Value);
+                bool isInRightArea = !scenario.DestinationIndoorTerritoryId.HasValue || (territoryRow.RowId == scenario.DestinationIndoorTerritoryId.Value);
                 var foundEntrance = NoireService.ObjectTable.FirstOrDefault(x => x.BaseId == (uint)EntranceType.WorkshopEntrance);
 
                 return isInRightArea && !occupied && foundEntrance != default;
@@ -310,7 +310,7 @@ public static class BuyingProcess
             })
             .EnqueueTo(Service.TaskQueue);
 
-        TaskBuilder.Create()
+        TaskBuilder.Create("Waiting to be within reach")
             .WithCondition(task =>
             {
                 var localPlayer = NoireService.ClientState.LocalPlayer;
@@ -374,7 +374,7 @@ public static class BuyingProcess
                 if (!GenericHelpers.TryGetAddonByName<AtkUnitBase>("HousingSelectRoom", out var addon) || !GenericHelpers.IsAddonReady(addon))
                     return false;
 
-                double room = receiver.ChamberOrApartmentNumber;
+                double room = scenario.ChamberOrApartmentNumber;
                 var roomRangeIndex = Math.Floor((room - 1) / 15);
 
                 Callback.Fire(addon, true, 1, (int)roomRangeIndex);
@@ -390,7 +390,7 @@ public static class BuyingProcess
                 if (!GenericHelpers.TryGetAddonByName<AtkUnitBase>("HousingSelectRoom", out var addon) || !GenericHelpers.IsAddonReady(addon))
                     return false;
 
-                double room = receiver.ChamberOrApartmentNumber;
+                double room = scenario.ChamberOrApartmentNumber;
                 var roomIndex = (room - 1) % 15;
 
                 Callback.Fire(addon, true, 0, (int)roomIndex);

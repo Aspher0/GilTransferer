@@ -25,12 +25,12 @@ namespace GilTransferer.Helpers;
 
 public static class SellingProcess
 {
-    public static void SetupAllMannequins(Receiver? receiver)
+    public static void SetupAllMannequins(Scenario? scenario)
     {
-        if (receiver == null || Service.LifestreamIPC.IsBusy())
+        if (scenario == null || Service.LifestreamIPC.IsBusy())
             return;
 
-        foreach (var mannequin in receiver.Mannequins)
+        foreach (var mannequin in scenario.Mannequins)
         {
             NoireLogger.LogDebug($"Processing mannequin for BaseId {mannequin.BaseId} at position {mannequin.Position}");
             ProcessMannequin(mannequin);
@@ -72,7 +72,7 @@ public static class SellingProcess
 
         NoireLogger.LogDebug($"Found mannequin NPC for BaseId {baseId} at position {position}: Name={foundNpc.Name}");
 
-        TaskBuilder.Create()
+        TaskBuilder.Create("Enabling TextAdvance")
             .WithAction(task =>
             {
                 if (!Service.TextAdvanceIPC.EnableExternalControl(new()))
@@ -107,7 +107,7 @@ public static class SellingProcess
 
     public static void MoveToUntilInReach(ICharacter character)
     {
-        TaskBuilder.Create()
+        TaskBuilder.Create("Waiting to be available")
             .WithCondition(task => !NoireService.Condition.Any(ConditionFlag.OccupiedInEvent, ConditionFlag.OccupiedInQuestEvent))
             .WithTimeout(TimeSpan.FromSeconds(5))
             .EnqueueTo(Service.TaskQueue);
@@ -232,6 +232,7 @@ public static class SellingProcess
 
         TaskBuilder.AddDelayMilliseconds(500, Service.TaskQueue);
 
+        // When the slot on the mannequin is already bought (sold out) this task is always stalling because the SelectYesno never has to appear
         TaskBuilder.Create($"Select yes")
             .WithCondition(task =>
             {
@@ -248,7 +249,7 @@ public static class SellingProcess
                 Callback.Fire(addon, true, 0);
                 return true;
             })
-            .WithTimeout(TimeSpan.FromSeconds(5))
+            .WithTimeout(TimeSpan.FromSeconds(2))
             .EnqueueTo(Service.TaskQueue);
 
         TaskBuilder.AddDelayMilliseconds(500, Service.TaskQueue);

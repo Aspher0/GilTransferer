@@ -1,4 +1,6 @@
+using Dalamud.Utility;
 using GilTransferer.Enums;
+using NoireLib.Helpers;
 using NoireLib.Models;
 using System;
 using System.Collections.Generic;
@@ -10,11 +12,19 @@ namespace GilTransferer.Models;
 /// Represents a character that will receive gils from other characters.
 /// </summary>
 [Serializable]
-public class Receiver
+public class Scenario
 {
+    public string UniqueID { get; private set; } = RandomGenerator.GenerateGuidString();
+
+    /// <summary>
+    /// The name of this scenario.
+    /// </summary>
+    public string ScenarioName { get; set; } = string.Empty;
+
     /// <summary>
     /// Represents the player that will receive the gils.
     /// </summary>
+    // Don't think this is useful anymore, but leaving it for now
     public PlayerModel ReceivingPlayer { get; set; }
 
     // =============== Might need to move this to Mannequin later ===============
@@ -58,8 +68,22 @@ public class Receiver
     public List<Mannequin> Mannequins { get; set; } = new();
 
     [JsonConstructor]
-    public Receiver(PlayerModel receivingPlayer, DestinationType destinationType = DestinationType.Private)
+    public Scenario(string uniqueId, string scenarioName, PlayerModel receivingPlayer, DestinationType destinationType = DestinationType.Private)
     {
+        UniqueID = uniqueId;
+        ScenarioName = scenarioName;
+        ReceivingPlayer = receivingPlayer;
+        PlayerForEstateTP = receivingPlayer.Clone();
+        DestinationType = destinationType;
+    }
+
+    public Scenario(PlayerModel receivingPlayer, string? scenarioName = null, DestinationType destinationType = DestinationType.Private)
+    {
+        if (scenarioName.IsNullOrEmpty())
+            ScenarioName = receivingPlayer.FullName;
+        else
+            ScenarioName = scenarioName;
+
         ReceivingPlayer = receivingPlayer;
         PlayerForEstateTP = receivingPlayer.Clone();
         DestinationType = destinationType;

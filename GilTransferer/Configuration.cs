@@ -12,9 +12,9 @@ public class Configuration : NoireConfigBase<Configuration>
     public override string GetConfigFileName() => "GilTransfererConfig";
 
     /// <summary>
-    /// A list of receivers
+    /// A list of scenarios configured by the user.
     /// </summary>
-    public virtual List<Receiver> Receivers { get; set; } = new();
+    public virtual List<Scenario> Scenarios { get; set; } = new();
 
     /// <summary>
     /// The mapping of slot types to the item assigned to it.
@@ -22,7 +22,7 @@ public class Configuration : NoireConfigBase<Configuration>
     public virtual Dictionary<SlotType, uint> ItemsPerSlot { get; set; } = new();
 
     /// <summary>
-    /// Determines the minimum amount of gils a character must have to be considered for gil transfer to this receiver.
+    /// Determines the minimum amount of gils a character must have to be considered for gil transfer to this scenario.
     /// </summary>
     public virtual int MinGilsToConsiderCharacters { get; set; } = 100000;
 

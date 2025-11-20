@@ -32,6 +32,8 @@ public sealed class Plugin : IDalamudPlugin
         ECommonsMain.Init(PluginInterface, this);
         NoireLibMain.Initialize(PluginInterface, this);
 
+        Service.Initialize();
+
         MainWindow = new MainWindow();
         DebugWindow = new DebugWindow();
 

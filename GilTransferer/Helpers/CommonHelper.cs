@@ -13,16 +13,16 @@ public static class CommonHelper
     /// <summary>
     /// Checks if a character (by name and world) is already assigned to any slot in any mannequin
     /// </summary>
-    public static bool IsCharacterAssignedAnywhere(Receiver receiver, string characterName, string characterWorld, out string assignmentInfo)
+    public static bool IsCharacterAssignedAnywhere(Scenario scenario, string characterName, string characterWorld, out string assignmentInfo)
     {
         assignmentInfo = string.Empty;
 
-        if (receiver == null)
+        if (scenario == null)
             return false;
 
-        for (int i = 0; i < receiver.Mannequins.Count; i++)
+        for (int i = 0; i < scenario.Mannequins.Count; i++)
         {
-            var mannequin = receiver.Mannequins[i];
+            var mannequin = scenario.Mannequins[i];
             foreach (var (slotType, mannequinSlot) in mannequin.Slots)
             {
                 var slot = mannequinSlot;

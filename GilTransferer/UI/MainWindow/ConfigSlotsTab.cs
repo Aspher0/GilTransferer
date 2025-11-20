@@ -13,7 +13,7 @@ public partial class MainWindow
 {
     private void DrawConfigSlotsTab()
     {
-        if (_selectedReceiver == null)
+        if (_selectedScenario == null)
             return;
 
         using (ImRaii.Child("##ConfigSlotsChild", new Vector2(-1, -1), false))

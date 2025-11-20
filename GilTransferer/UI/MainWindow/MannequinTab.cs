@@ -33,9 +33,9 @@ public partial class MainWindow
                 ImGui.Separator();
                 ImGui.Spacing();
 
-                for (int i = 0; i < _selectedReceiver!.Mannequins.Count; i++)
+                for (int i = 0; i < _selectedScenario!.Mannequins.Count; i++)
                 {
-                    var mannequin = _selectedReceiver.Mannequins[i];
+                    var mannequin = _selectedScenario.Mannequins[i];
                     bool isSelected = _selectedMannequinIndex == i;
 
                     using (var id = ImRaii.PushId(i))
@@ -62,7 +62,7 @@ public partial class MainWindow
                             {
                                 if (ImGui.MenuItem("Delete"))
                                 {
-                                    _selectedReceiver.Mannequins.RemoveAt(i);
+                                    _selectedScenario.Mannequins.RemoveAt(i);
                                     Configuration.Instance.Save();
                                     if (_selectedMannequinIndex == i)
                                     {
@@ -121,10 +121,10 @@ public partial class MainWindow
                         ImGui.TextUnformatted("Mannequin Slots:");
                         ImGui.Spacing();
 
-                        var showAllChars = _selectedReceiver!.ShowAllCharsInComboBox;
+                        var showAllChars = _selectedScenario!.ShowAllCharsInComboBox;
                         if (ImGui.Checkbox("Show All Characters (Regardless of min. amount of gils)", ref showAllChars))
                         {
-                            _selectedReceiver!.ShowAllCharsInComboBox = showAllChars;
+                            _selectedScenario!.ShowAllCharsInComboBox = showAllChars;
                             Configuration.Instance.Save();
                         }
 
@@ -214,8 +214,9 @@ public partial class MainWindow
                                         if (
                                             !showAllChars &&
                                             (charInfo.gil - Configuration.Instance.GilsToLeaveOnCharacters <= 0 ||
-                                            charInfo.gil < Configuration.Instance.MinGilsToConsiderCharacters ||
-                                            (charInfo.name == _selectedReceiver!.ReceivingPlayer.PlayerName && charInfo.world == _selectedReceiver!.ReceivingPlayer.Homeworld)))
+                                            charInfo.gil < Configuration.Instance.MinGilsToConsiderCharacters
+                                            // || (charInfo.name == _selectedScenario!.ReceivingPlayer.PlayerName && charInfo.world == _selectedScenario!.ReceivingPlayer.Homeworld) // Commented out for now
+                                            ))
                                         {
                                             continue;
                                         }
@@ -230,7 +231,7 @@ public partial class MainWindow
                                         slot.AssignedCharacter.PlayerName == charInfo.name &&
                                         slot.AssignedCharacter.Homeworld == charInfo.world;
 
-                                        bool isAssignedElsewhere = CommonHelper.IsCharacterAssignedAnywhere(_selectedReceiver, charInfo.name, charInfo.world, out string assignmentInfo);
+                                        bool isAssignedElsewhere = CommonHelper.IsCharacterAssignedAnywhere(_selectedScenario, charInfo.name, charInfo.world, out string assignmentInfo);
 
                                         // Color code: Orange/Yellow for already assigned characters
                                         if (isAssignedElsewhere && !isSelected)
@@ -320,9 +321,9 @@ public partial class MainWindow
             var targetCompanionOwnerId = npcNative->CompanionOwnerId;
 
             int existingIndex = -1;
-            for (int i = 0; i < _selectedReceiver!.Mannequins.Count; i++)
+            for (int i = 0; i < _selectedScenario!.Mannequins.Count; i++)
             {
-                var mannequin = _selectedReceiver.Mannequins[i];
+                var mannequin = _selectedScenario.Mannequins[i];
                 if (mannequin.BaseId == targetBaseId && mannequin.CompanionOwnerId == targetCompanionOwnerId)
                 {
                     existingIndex = i;
@@ -334,7 +335,7 @@ public partial class MainWindow
             {
                 if (ImGui.Button($"Edit {targetNpc!.Name}", new Vector2(buttonWidth, 25)))
                 {
-                    var existingMannequin = _selectedReceiver!.Mannequins[existingIndex];
+                    var existingMannequin = _selectedScenario!.Mannequins[existingIndex];
                     _selectedMannequinIndex = existingIndex;
                     _selectedMannequin = existingMannequin;
                 }
@@ -344,10 +345,10 @@ public partial class MainWindow
                 if (ImGui.Button($"Add {targetNpc!.Name}", new Vector2(buttonWidth, 25)))
                 {
                     var newMannequin = new Mannequin(null, targetBaseId, targetCompanionOwnerId, targetNpc.Position);
-                    _selectedReceiver!.Mannequins.Add(newMannequin);
+                    _selectedScenario!.Mannequins.Add(newMannequin);
                     Configuration.Instance.Save();
 
-                    _selectedMannequinIndex = _selectedReceiver.Mannequins.Count - 1;
+                    _selectedMannequinIndex = _selectedScenario.Mannequins.Count - 1;
                     _selectedMannequin = newMannequin;
                 }
             }
@@ -369,7 +370,7 @@ public partial class MainWindow
             {
                 if (_selectedMannequin != null && _selectedMannequinIndex >= 0)
                 {
-                    _selectedReceiver!.Mannequins.RemoveAt(_selectedMannequinIndex);
+                    _selectedScenario!.Mannequins.RemoveAt(_selectedMannequinIndex);
                     Configuration.Instance.Save();
                     _selectedMannequinIndex = -1;
                     _selectedMannequin = null;
@@ -382,11 +383,11 @@ public partial class MainWindow
         ImGui.SameLine();
 
         if (ImGui.Button("Setup All Mannequins", new Vector2(buttonWidth, 25)))
-            SellingProcess.SetupAllMannequins(_selectedReceiver);
+            SellingProcess.SetupAllMannequins(_selectedScenario);
 
         ImGui.SameLine();
 
         if (ImGui.Button("Process Characters Buying", new Vector2(buttonWidth, 25)))
-            BuyingProcess.ProcessAllCharacterPurchases(_selectedReceiver);
+            BuyingProcess.ProcessAllCharacterPurchases(_selectedScenario);
     }
 }

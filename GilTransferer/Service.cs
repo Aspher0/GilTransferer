@@ -2,6 +2,7 @@ using AutoRetainerAPI;
 using AutoRetainerAPI.Configuration;
 using GilTransferer.IPC;
 using NoireLib;
+using NoireLib.EventBus;
 using NoireLib.Helpers;
 using NoireLib.Helpers.ObjectExtensions;
 using NoireLib.TaskQueue;
@@ -11,7 +12,8 @@ namespace GilTransferer;
 
 public static class Service
 {
-    public static NoireTaskQueue TaskQueue { get; set; } = NoireLibMain.AddModule(new NoireTaskQueue("TaskQueueDebug"))!;
+    public static NoireEventBus EventBus { get; private set; }
+    public static NoireTaskQueue TaskQueue { get; private set; }
 
     public static AutoRetainerApi AutoRetainerAPI { get; set; } = new();
     public static LifestreamIPC LifestreamIPC { get; set; } = new();
@@ -36,6 +38,12 @@ public static class Service
         if (!result.IsDefault())
             _cachedOfflineCharacterData[cid] = result!;
         return _cachedOfflineCharacterData.TryGetValue(cid, out var data) ? data : null;
+    }
+
+    public static void Initialize()
+    {
+        EventBus = NoireLibMain.AddModule(new NoireEventBus("EventBus"))!;
+        TaskQueue = NoireLibMain.AddModule(new NoireTaskQueue("TaskQueueDebug", eventBus: EventBus))!;
     }
 
     public static void StopQueue()
