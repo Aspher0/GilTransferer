@@ -122,7 +122,7 @@ public partial class MainWindow
 
                 if (ImGui.Button("Set to Current Character"))
                 {
-                    var localPlayer = NoireService.ClientState.LocalPlayer;
+                    var localPlayer = NoireService.ObjectTable.LocalPlayer;
                     if (localPlayer != null)
                     {
                         _selectedScenario.ReceivingPlayer = new PlayerModel(localPlayer);
@@ -168,7 +168,7 @@ public partial class MainWindow
 
             if (ImGui.Button("Set to Current Character##EstateTP"))
             {
-                var localPlayer = NoireService.ClientState.LocalPlayer;
+                var localPlayer = NoireService.ObjectTable.LocalPlayer;
                 if (localPlayer != null)
                 {
                     _selectedScenario!.PlayerForEstateTP = new PlayerModel(localPlayer);

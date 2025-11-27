@@ -30,7 +30,7 @@ public class DebugWindow : Window, IDisposable
     {
         ImGui.Spacing();
 
-        var localPlayer = NoireService.ClientState.LocalPlayer;
+        var localPlayer = NoireService.ObjectTable.LocalPlayer;
         if (localPlayer == null)
         {
             ImGui.TextUnformatted("Our local player is currently not loaded.");

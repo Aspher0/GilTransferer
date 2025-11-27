@@ -64,7 +64,7 @@ public static class BuyingProcess
         TaskBuilder.Create($"Login to {assignedCharacter!.FullName}")
             .WithAction(task =>
             {
-                var localPlayer = NoireService.ClientState.LocalPlayer;
+                var localPlayer = NoireService.ObjectTable.LocalPlayer;
                 if (localPlayer != null && localPlayer.Name.TextValue == assignedCharacter.PlayerName &&
                     localPlayer.HomeWorld.Value.Name.ExtractText() == assignedCharacter.Homeworld)
                 {
@@ -82,7 +82,7 @@ public static class BuyingProcess
             })
             .WithCondition(task =>
             {
-                var localPlayer = NoireService.ClientState.LocalPlayer;
+                var localPlayer = NoireService.ObjectTable.LocalPlayer;
 
                 if (localPlayer == null)
                     return false;
@@ -101,7 +101,7 @@ public static class BuyingProcess
         TaskBuilder.Create($"Moving to world {scenario.PlayerForEstateTP.Homeworld}")
             .WithAction(task =>
             {
-                var localPlayer = NoireService.ClientState.LocalPlayer;
+                var localPlayer = NoireService.ObjectTable.LocalPlayer;
                 if (localPlayer != null && localPlayer.CurrentWorld.Value.Name.ExtractText() == scenario.PlayerForEstateTP.Homeworld)
                 {
                     return;
@@ -111,7 +111,7 @@ public static class BuyingProcess
             })
             .WithCondition(task =>
             {
-                var localPlayer = NoireService.ClientState.LocalPlayer;
+                var localPlayer = NoireService.ObjectTable.LocalPlayer;
 
                 if (localPlayer == null)
                     return false;
@@ -192,7 +192,7 @@ public static class BuyingProcess
         TaskBuilder.Create("Waiting to be available")
             .WithCondition(task =>
             {
-                var localPlayer = NoireService.ClientState.LocalPlayer;
+                var localPlayer = NoireService.ObjectTable.LocalPlayer;
 
                 if (localPlayer == null)
                     return false;
@@ -221,7 +221,7 @@ public static class BuyingProcess
         TaskBuilder.Create("Find House Entrance & Enter")
             .WithCondition(() =>
             {
-                var localPlayer = NoireService.ClientState.LocalPlayer;
+                var localPlayer = NoireService.ObjectTable.LocalPlayer;
 
                 if (localPlayer == null)
                     return false;
@@ -248,7 +248,7 @@ public static class BuyingProcess
         TaskBuilder.Create("Waiting to be near door")
             .WithCondition(() =>
             {
-                var localPlayer = NoireService.ClientState.LocalPlayer;
+                var localPlayer = NoireService.ObjectTable.LocalPlayer;
 
                 if (localPlayer == null)
                     return false;
@@ -270,7 +270,7 @@ public static class BuyingProcess
             })
             .WithCondition(() =>
             {
-                var localPlayer = NoireService.ClientState.LocalPlayer;
+                var localPlayer = NoireService.ObjectTable.LocalPlayer;
 
                 if (localPlayer == null)
                     return false;
@@ -293,7 +293,7 @@ public static class BuyingProcess
         TaskBuilder.Create("Target and move to workshop entrance")
             .WithCondition(task =>
             {
-                var localPlayer = NoireService.ClientState.LocalPlayer;
+                var localPlayer = NoireService.ObjectTable.LocalPlayer;
                 if (localPlayer == null)
                     return false;
 
@@ -313,7 +313,7 @@ public static class BuyingProcess
         TaskBuilder.Create("Waiting to be within reach")
             .WithCondition(task =>
             {
-                var localPlayer = NoireService.ClientState.LocalPlayer;
+                var localPlayer = NoireService.ObjectTable.LocalPlayer;
                 if (localPlayer == null)
                     return false;
 
@@ -416,7 +416,7 @@ public static class BuyingProcess
         TaskBuilder.Create("Waiting to be inside the FC room")
             .WithCondition(task =>
             {
-                var localPlayer = NoireService.ClientState.LocalPlayer;
+                var localPlayer = NoireService.ObjectTable.LocalPlayer;
 
                 if (localPlayer == null)
                     return false;
@@ -448,7 +448,7 @@ public static class BuyingProcess
 
         TaskBuilder.AddDelayMilliseconds(500, Service.TaskQueue);
 
-        TaskBuilder.Create("Target and move to Mannequin")
+        TaskBuilder.Create($"Target and move to Mannequin {mannequin.UniqueId}")
             .WithAction(task =>
             {
                 var allNpcs = NoireService.ObjectTable.OfType<INpc>();
@@ -467,10 +467,10 @@ public static class BuyingProcess
             {
                 var npc = task.Metadata as INpc;
 
-                if (NoireService.ClientState.LocalPlayer == null || npc == null)
+                if (NoireService.ObjectTable.LocalPlayer == null || npc == null)
                     return false;
 
-                if (Vector3.Distance(NoireService.ClientState.LocalPlayer.Position, npc.Position) < 3.5f)
+                if (Vector3.Distance(NoireService.ObjectTable.LocalPlayer.Position, npc.Position) < 3.5f)
                 {
                     Service.LifestreamIPC.Move([]);
                     return true;
@@ -503,7 +503,7 @@ public static class BuyingProcess
 
                 if (target == null)
                 {
-                    var npc = TaskBuilder.GetMetadataFromTask<INpc>(Service.TaskQueue, "Target and move to Mannequin");
+                    var npc = TaskBuilder.GetMetadataFromTask<INpc>(Service.TaskQueue, $"Target and move to Mannequin {mannequin.UniqueId}");
 
                     if (npc == null)
                         return;

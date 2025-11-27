@@ -74,8 +74,8 @@ public partial class MainWindow : Window, IDisposable
         if (currentTask.CustomId != null)
             return $" - {currentTask.CustomId}";
 
-        if (currentTask.CompletionCondition?.Type == CompletionConditionType.Delay)
-            return $" - Wait {currentTask.CompletionCondition.Delay!.Value.TotalMilliseconds}ms";
+        if (currentTask.PostCompletionDelay.HasValue)
+            return $" - Wait {currentTask.PostCompletionDelay!.Value.TotalMilliseconds}ms";
 
         return string.Empty;
     }

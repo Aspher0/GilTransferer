@@ -17,7 +17,7 @@ public partial class MainWindow
 
         if (ImGui.Button("Add Current Character"))
         {
-            var localPlayer = NoireService.ClientState.LocalPlayer;
+            var localPlayer = NoireService.ObjectTable.LocalPlayer;
             if (localPlayer != null)
             {
                 var newScenario = new Scenario(new PlayerModel(localPlayer));

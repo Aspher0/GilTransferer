@@ -24,7 +24,7 @@ public static class Service
     {
         get
         {
-            var result = KeyedThrottler.Throttle("RegisteredCharacters", () => AutoRetainerAPI.GetRegisteredCharacters(), intervalMilliseconds: 500);
+            var result = ThrottleHelper.Throttle("RegisteredCharacters", () => AutoRetainerAPI.GetRegisteredCharacters(), intervalMilliseconds: 500);
             if (!result.IsDefault())
                 _cachedRegisteredCharacters = result!;
             return _cachedRegisteredCharacters;
@@ -34,7 +34,7 @@ public static class Service
     private static Dictionary<ulong, OfflineCharacterData> _cachedOfflineCharacterData = new();
     public static OfflineCharacterData? GetOfflineCharacterData(ulong cid)
     {
-        var result = KeyedThrottler.Throttle($"OfflineCharacterData_{cid}", () => AutoRetainerAPI.GetOfflineCharacterData(cid), intervalMilliseconds: 500);
+        var result = ThrottleHelper.Throttle($"OfflineCharacterData_{cid}", () => AutoRetainerAPI.GetOfflineCharacterData(cid), intervalMilliseconds: 500);
         if (!result.IsDefault())
             _cachedOfflineCharacterData[cid] = result!;
         return _cachedOfflineCharacterData.TryGetValue(cid, out var data) ? data : null;
@@ -57,6 +57,5 @@ public static class Service
     {
         AutoRetainerAPI.Dispose();
         StopQueue();
-        KeyedThrottler.Clear();
     }
 }

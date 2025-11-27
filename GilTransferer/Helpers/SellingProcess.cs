@@ -122,10 +122,10 @@ public static class SellingProcess
             })
             .WithCondition(task =>
             {
-                if (NoireService.ClientState.LocalPlayer == null)
+                if (NoireService.ObjectTable.LocalPlayer == null)
                     return false;
 
-                if (Vector3.Distance(NoireService.ClientState.LocalPlayer.Position, character.Position) < 3.5f)
+                if (Vector3.Distance(NoireService.ObjectTable.LocalPlayer.Position, character.Position) < 3.5f)
                 {
                     Service.LifestreamIPC.Move([]);
                     return true;
@@ -298,7 +298,7 @@ public static class SellingProcess
 
         TaskBuilder.AddDelayMilliseconds(500, Service.TaskQueue);
 
-        TaskBuilder.Create("Find Right Item")
+        TaskBuilder.Create($"Find Right Item For {mannequinSlot.AssignedCharacter?.UniqueId ?? "Unknown"}")
             .WithCondition(task =>
             {
                 if (!GenericHelpers.TryGetAddonByName<AtkUnitBase>("MerchantEquipSelect", out var addon) || !GenericHelpers.IsAddonReady(addon))
@@ -322,14 +322,16 @@ public static class SellingProcess
                         var text = node->GetAsAtkTextNode()->NodeText.GetText();
                         if (!text.IsNullOrWhitespace())
                         {
-                            NoireLogger.LogDebug($"Found item with text: {text}");
+                            NoireLogger.LogDebug($"Found item with text: {text}", "[SELLING DEBUG] ");
 
                             if (itemSheet.TryGetRow(Configuration.Instance.ItemsPerSlot[slotType], out var item))
                             {
-                                NoireLogger.LogDebug($"Found item with Id: {item.RowId}, name: {item.Name}, Is same ? {item.Name == text}");
+                                NoireLogger.LogDebug($"Should be item Id: {item.RowId}, name: {item.Name}, Is same ? {item.Name == text}", "[SELLING DEBUG] ");
                                 if (item.Name == text)
                                 {
-                                    task.Metadata = nodeIndex == 4 ? 0 : nodeIndex - 41001;
+                                    var callback = nodeIndex == 4 ? 0 : nodeIndex - 41000;
+                                    NoireLogger.LogDebug($"Selecting item with callback value of {callback} ({text})", "[SELLING DEBUG] ");
+                                    task.Metadata = callback;
                                     return true;
                                 }
                             }
@@ -348,10 +350,11 @@ public static class SellingProcess
                 if (!GenericHelpers.TryGetAddonByName<AtkUnitBase>("MerchantEquipSelect", out var addon) || !GenericHelpers.IsAddonReady(addon))
                     return false;
 
-                var previousMetadata = TaskBuilder.GetMetadataFromTask<object?>(Service.TaskQueue, "Find Right Item");
+                var previousMetadata = TaskBuilder.GetMetadataFromTask<object?>(Service.TaskQueue, $"Find Right Item For {mannequinSlot.AssignedCharacter?.UniqueId ?? "Unknown"}");
                 if (previousMetadata == null || previousMetadata is not int nodeIndex)
                     return false;
 
+                NoireLogger.LogDebug($"Firing callback to select item with nodeIndex {nodeIndex}", "[SELLING DEBUG] ");
                 Callback.Fire(addon, true, 19, nodeIndex);
                 return true;
             })

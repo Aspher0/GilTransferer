@@ -97,7 +97,7 @@ public static class CommonHelper
     /// </summary>
     public static Vector3 GetMoveForwardVector()
     {
-        var localPlayer = NoireService.ClientState.LocalPlayer;
+        var localPlayer = NoireService.ObjectTable.LocalPlayer;
 
         if (localPlayer == null)
             throw new InvalidOperationException("Local player is not loaded.");
