@@ -128,6 +128,13 @@ public partial class MainWindow
 
                         ImGui.Spacing();
 
+                        var hideAssignedChars = _selectedScenario!.HideAlreadyAssignedCharactersInComboBox;
+                        if (ImGui.Checkbox("Hide Already Assigned Characters", ref hideAssignedChars))
+                        {
+                            _selectedScenario!.HideAlreadyAssignedCharactersInComboBox = hideAssignedChars;
+                            Configuration.Instance.Save();
+                        }
+
                         List<(ulong cid, string name, string world, long gil, string displayText)> characterList = [];
 
                         if (Service.AutoRetainerAPI.Ready)
@@ -231,8 +238,11 @@ public partial class MainWindow
 
                                         bool isAssignedElsewhere = CommonHelper.IsCharacterAssignedAnywhere(_selectedScenario, charInfo.name, charInfo.world, out string assignmentInfo);
 
+                                        if (hideAssignedChars && isAssignedElsewhere && !isSelected)
+                                            continue;
+
                                         // Color code: Orange/Yellow for already assigned characters
-                                        if (isAssignedElsewhere && !isSelected)
+                                        if (isAssignedElsewhere)
                                         {
                                             // Need to use ImRaii here to ensure proper pop
                                             ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(1.0f, 0.7f, 0.2f, 1.0f));
@@ -247,7 +257,7 @@ public partial class MainWindow
                                             ImGui.CloseCurrentPopup();
                                         }
 
-                                        if (isAssignedElsewhere && !isSelected)
+                                        if (isAssignedElsewhere)
                                             ImGui.PopStyleColor();
 
                                         if (isAssignedElsewhere && ImGui.IsItemHovered())

@@ -1,4 +1,7 @@
+using Dalamud.Memory;
 using ECommons.MathHelpers;
+using FFXIVClientStructs.FFXIV.Client.System.Framework;
+using FFXIVClientStructs.FFXIV.Client.UI.Agent;
 using GilTransferer.Enums;
 using GilTransferer.Models;
 using NoireLib;
@@ -144,5 +147,47 @@ public static class CommonHelper
 
         var finalPriceOfSlot = gils - Configuration.Instance.GilsToLeaveOnCharacters;
         return (int)finalPriceOfSlot;
+    }
+
+    // From SimpleTweaks by Caraxi : https://github.com/Caraxi/SimpleTweaksPlugin/blob/main/Tweaks/EstateListCommand.cs#L18
+    public unsafe static bool OpenEstateList(string playerName)
+    {
+        if (string.IsNullOrWhiteSpace(playerName))
+            return false;
+
+        if (playerName.StartsWith("<") && playerName.EndsWith(">"))
+        {
+            var resolved = Framework.Instance()->GetUIModule()->GetPronounModule()->ResolvePlaceholder(playerName, 1, 0);
+            if (resolved != null)
+                playerName = MemoryHelper.ReadStringNullTerminated(new IntPtr(resolved->GetName()));
+        }
+
+        var useContentId = ulong.TryParse(playerName, out var contentId);
+
+        var agent = AgentFriendlist.Instance();
+
+        for (var i = 0U; i < agent->InfoProxy->EntryCount; i++)
+        {
+            var f = agent->InfoProxy->GetEntry(i);
+            if (f == null) continue;
+            if (f->HomeWorld != NoireService.ObjectTable.LocalPlayer?.CurrentWorld.RowId) continue;
+            if (f->ContentId == 0) continue;
+            if (f->Name[0] == 0) continue;
+            if ((f->ExtraFlags & 32) != 0) continue;
+            if (useContentId && contentId == f->ContentId)
+            {
+                AgentFriendlist.Instance()->OpenFriendEstateTeleportation(f->ContentId);
+                return true;
+            }
+
+            var name = f->NameString;
+            if (name.StartsWith(playerName, StringComparison.InvariantCultureIgnoreCase))
+            {
+                AgentFriendlist.Instance()->OpenFriendEstateTeleportation(f->ContentId);
+                return true;
+            }
+        }
+
+        return false;
     }
 }

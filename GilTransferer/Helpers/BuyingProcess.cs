@@ -128,7 +128,8 @@ public static class BuyingProcess
         TaskBuilder.Create($"Moving to world {scenario.PlayerForEstateTP.Homeworld}")
             .WithAction(task =>
             {
-                ChatHelper.SendMessage($"/estatelist {scenario.PlayerForEstateTP.PlayerName}");
+                //ChatHelper.SendMessage($"/estatelist {scenario.PlayerForEstateTP.PlayerName}");
+                CommonHelper.OpenEstateList(scenario.PlayerForEstateTP.PlayerName);
             })
             .WithCondition(task =>
             {

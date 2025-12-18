@@ -62,6 +62,11 @@ public class Scenario
     public bool ShowAllCharsInComboBox { get; set; } = false;
 
     /// <summary>
+    /// A flag indicating whether to hide characters that are already assigned to any mannequin slot in the combo box.
+    /// </summary>
+    public bool HideAlreadyAssignedCharactersInComboBox { get; set; } = false;
+
+    /// <summary>
     /// Represents a list of Mannequins that will be used to transfer gils.<br/>
     /// See <see cref="Mannequin"/> for more details.
     /// </summary>
