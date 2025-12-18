@@ -4,6 +4,8 @@ A plugin to facilitate transfering gils between alts within a single Service acc
 Relies on TextAdvance, YesAlready, Lifestream and AutoRetainer.
 
  # Todo
+- Remove YesAlready dependency by clicking "Yes" when entering the house, or let yesalready do it anyway if installed
+- Click yes or no when it asks if you want to use an aetheryte ticket
 - Handle different destination types (Private, Apartment, FC), right now it will only go to FC room
 - Find a better way to wait for territory change (instead of having to specify the territory id of indoors/outdoors)
 - Correctly use Lifestream to change DC (I believe right now it will login to the character, then if it needs to change DC it will logout again and change)
