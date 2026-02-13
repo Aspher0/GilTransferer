@@ -3,9 +3,11 @@ using Dalamud.Game.ClientState.Objects.Enums;
 using Dalamud.Game.ClientState.Objects.SubKinds;
 using Dalamud.Interface;
 using Dalamud.Interface.Utility.Raii;
+using FFXIVClientStructs.FFXIV.Client.Game;
 using GilTransferer.Enums;
 using GilTransferer.Helpers;
 using GilTransferer.Models;
+using Lumina.Excel.Sheets;
 using NoireLib;
 using NoireLib.Helpers;
 using NoireLib.Models;
@@ -104,13 +106,16 @@ public partial class MainWindow
                     ImGui.Text($"Companion Owner ID: {companionOwnerId}");
                     ImGui.Text($"Position: ({position.X:F2}, {position.Y:F2}, {position.Z:F2})");
 
+                    var placeName = ExcelSheetHelper.GetSheet<PlaceName>()!.GetRow(_selectedMannequin.PlaceNameId)!.Name.ExtractText();
+                    ImGui.Text($"{placeName} W{_selectedMannequin.Ward} P{_selectedMannequin.Plot}{(_selectedMannequin.ChamberOrApartmentNumber == 0 ? "" : $" Room {_selectedMannequin.ChamberOrApartmentNumber}")} ({_selectedMannequin.DestinationType})");
+
                     ImGui.Spacing();
                     ImGui.Separator();
                     ImGui.Spacing();
 
                     if (ImGui.Button("Setup this Mannequin"))
                     {
-                        SellingProcess.ProcessMannequin(_selectedMannequin, true);
+                        SellingProcess.ProcessMannequin(_selectedMannequin, _selectedScenario, true);
                     }
 
                     availableYSpace = ImGui.GetContentRegionAvail().Y;
@@ -119,21 +124,15 @@ public partial class MainWindow
                         ImGui.TextUnformatted("Mannequin Slots:");
                         ImGui.Spacing();
 
-                        var showAllChars = _selectedScenario!.ShowAllCharsInComboBox;
+                        var showAllChars = Configuration.Instance.ShowAllCharsInComboBox;
                         if (ImGui.Checkbox("Show All Characters (Regardless of min. amount of gils)", ref showAllChars))
-                        {
-                            _selectedScenario!.ShowAllCharsInComboBox = showAllChars;
-                            Configuration.Instance.Save();
-                        }
+                            Configuration.Instance.ShowAllCharsInComboBox = showAllChars;
 
                         ImGui.Spacing();
 
-                        var hideAssignedChars = _selectedScenario!.HideAlreadyAssignedCharactersInComboBox;
+                        var hideAssignedChars = Configuration.Instance.HideAlreadyAssignedCharactersInComboBox;
                         if (ImGui.Checkbox("Hide Already Assigned Characters", ref hideAssignedChars))
-                        {
-                            _selectedScenario!.HideAlreadyAssignedCharactersInComboBox = hideAssignedChars;
-                            Configuration.Instance.Save();
-                        }
+                            Configuration.Instance.HideAlreadyAssignedCharactersInComboBox = hideAssignedChars;
 
                         List<(ulong cid, string name, string world, long gil, string displayText)> characterList = [];
 
@@ -218,8 +217,8 @@ public partial class MainWindow
                                     {
                                         if (
                                             !showAllChars &&
-                                            (charInfo.gil - Configuration.Instance.GilsToLeaveOnCharacters <= 0 ||
-                                            charInfo.gil < Configuration.Instance.MinGilsToConsiderCharacters
+                                            (charInfo.gil - _selectedScenario!.GilsToLeaveOnCharacters <= 0 ||
+                                            charInfo.gil < _selectedScenario!.MinGilsToConsiderCharacters
                                             // || (charInfo.name == _selectedScenario!.ReceivingPlayer.PlayerName && charInfo.world == _selectedScenario!.ReceivingPlayer.Homeworld) // Commented out for now
                                             ))
                                         {
@@ -251,7 +250,7 @@ public partial class MainWindow
                                         if (ImGui.Selectable(charInfo.displayText, isSelected))
                                         {
                                             slot.AssignedCharacter = new PlayerModel(charInfo.name, charInfo.world, contentId: charInfo.cid);
-                                            long gilsAvailable = charInfo.gil - Configuration.Instance.GilsToLeaveOnCharacters;
+                                            long gilsAvailable = charInfo.gil - _selectedScenario!.GilsToLeaveOnCharacters;
                                             Configuration.Instance.Save();
                                             _slotSearchFilters[slotType] = string.Empty;
                                             ImGui.CloseCurrentPopup();
@@ -291,7 +290,7 @@ public partial class MainWindow
 
                                     if (charData != null)
                                     {
-                                        bool willBeIgnored = charData.Gil < Configuration.Instance.MinGilsToConsiderCharacters || (charData.Gil - Configuration.Instance.GilsToLeaveOnCharacters <= 0);
+                                        bool willBeIgnored = charData.Gil < _selectedScenario!.MinGilsToConsiderCharacters || (charData.Gil - _selectedScenario!.GilsToLeaveOnCharacters <= 0);
 
                                         using (ImRaii.PushFont(UiBuilder.IconFont))
                                         {
@@ -302,9 +301,9 @@ public partial class MainWindow
                                         }
 
                                         if (willBeIgnored && ImGui.IsItemHovered())
-                                            ImGui.SetTooltip($"Character will be ignored (has {charData.Gil:N0} gil, minimum is {Configuration.Instance.MinGilsToConsiderCharacters:N0})");
+                                            ImGui.SetTooltip($"Character will be ignored (has {charData.Gil:N0} gil, minimum is {_selectedScenario!.MinGilsToConsiderCharacters:N0})");
                                         else if (!willBeIgnored && ImGui.IsItemHovered())
-                                            ImGui.SetTooltip($"Character will be processed ({(charData.Gil - Configuration.Instance.GilsToLeaveOnCharacters):N0} gil to transfer)");
+                                            ImGui.SetTooltip($"Character will be processed ({(charData.Gil - _selectedScenario!.GilsToLeaveOnCharacters):N0} gil to transfer)");
                                     }
                                 }
                             }
@@ -352,7 +351,31 @@ public partial class MainWindow
             {
                 if (ImGui.Button($"Add {targetNpc!.Name}", new Vector2(buttonWidth, 25)))
                 {
-                    var newMannequin = new Mannequin(null, targetBaseId, targetCompanionOwnerId, targetNpc.Position);
+                    var housingManager = HousingManager.Instance();
+                    var ward = housingManager->GetCurrentWard();
+                    var plot = housingManager->GetCurrentPlot() + 1; // Plot is 0 indexed in the struct but 1 indexed for users, so we add 1 here. Also, -1 means we're not on a plot, so it now becomes 0 if not on plot.
+                    var room = housingManager->GetCurrentRoom();
+                    var houseId = housingManager->GetCurrentIndoorHouseId();
+
+                    var territoryType = NoireService.ClientState.TerritoryType;
+                    var placeNameId = ExcelSheetHelper.GetSheet<TerritoryType>()!.GetRow(territoryType)!.PlaceNameZone.Value.RowId;
+
+                    DestinationType destinationType = DestinationType.Unknown;
+
+                    if (room != 0)
+                        destinationType = houseId.IsApartment ? DestinationType.Apartment : DestinationType.FCChamber;
+                    else
+                    {
+                        var foundEntrance = NoireService.ObjectTable.FirstOrDefault(x => CommonHelper.IsAnyWorkshopEntrance(x.BaseId));
+
+                        // Todo: Find a better way, if the FC has no workshop nor rooms, the door MIGHT NOT be interactable and the object might not be set in the object table
+                        if (foundEntrance == null)
+                            destinationType = DestinationType.Private;
+                        else
+                            destinationType = DestinationType.FreeCompany;
+                    }
+
+                    var newMannequin = new Mannequin(null, targetBaseId, targetCompanionOwnerId, targetNpc.Position, destinationType, placeNameId, ward, plot, room);
                     _selectedScenario!.Mannequins.Add(newMannequin);
                     Configuration.Instance.Save();
 

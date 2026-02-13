@@ -1,10 +1,8 @@
 using Dalamud.Bindings.ImGui;
 using Dalamud.Game.ClientState.Objects.SubKinds;
 using Dalamud.Interface.Utility.Raii;
-using GilTransferer.Enums;
-using Lumina.Excel.Sheets;
+using GilTransferer.Helpers;
 using NoireLib;
-using NoireLib.Helpers;
 using NoireLib.Models;
 using System;
 using System.Numerics;
@@ -30,15 +28,34 @@ public partial class MainWindow
 
         if (Service.TaskQueue.IsQueueProcessing())
         {
-            ImGui.SameLine();
-
             if (ImGui.Button("Stop Processing Queue"))
             {
                 Service.StopQueue();
-                return;
             }
 
             ImGui.SameLine();
+
+            if (Service.TaskQueue.IsQueueRunning())
+            {
+                if (ImGui.Button("Pause Queue"))
+                    Service.TaskQueue.PauseQueue();
+            }
+            else
+            {
+                if (ImGui.Button("Resume Queue"))
+                    Service.TaskQueue.ResumeQueue();
+            }
+
+            ImGui.SameLine();
+
+            if (ImGui.Button("Skip Current Task"))
+                Service.TaskQueue.SkipCurrentTask();
+
+            ImGui.SameLine();
+
+            if (ImGui.Button("Skip Current Character"))
+                BuyingProcess.SkipCurrentCharacterPurchase();
+
             ImGui.TextUnformatted($"(Processing {Math.Floor(Service.TaskQueue.GetQueueProgress() * 100)}%)");
         }
 
@@ -94,60 +111,24 @@ public partial class MainWindow
             }
 
             ImGui.Spacing();
-
-            ImGui.TextUnformatted("Receiving Player:");
-
-            if (_selectedScenario!.ReceivingPlayer != null)
-            {
-                var playerName = _selectedScenario.ReceivingPlayer.PlayerName;
-                var homeworld = _selectedScenario.ReceivingPlayer.Homeworld;
-
-                ImGui.SetNextItemWidth(200);
-                if (ImGui.InputTextWithHint("##ReceiverName", "Player Name (No World)", ref playerName, 32))
-                {
-                    _selectedScenario.ReceivingPlayer.PlayerName = playerName;
-                    Configuration.Instance.Save();
-                }
-
-                ImGui.SameLine();
-                ImGui.Text("@");
-                ImGui.SameLine();
-
-                ImGui.SetNextItemWidth(150);
-                if (ImGui.InputTextWithHint("##ReceiverWorld", "World", ref homeworld, 32))
-                {
-                    _selectedScenario.ReceivingPlayer.Homeworld = homeworld;
-                    Configuration.Instance.Save();
-                }
-
-                if (ImGui.Button("Set to Current Character"))
-                {
-                    var localPlayer = NoireService.ObjectTable.LocalPlayer;
-                    if (localPlayer != null)
-                    {
-                        _selectedScenario.ReceivingPlayer = new PlayerModel(localPlayer);
-                        Configuration.Instance.Save();
-                    }
-                }
-            }
-
-            ImGui.Spacing();
             ImGui.Separator();
             ImGui.Spacing();
 
-            var estateTPPlayerName = _selectedScenario!.PlayerForEstateTP.PlayerName ?? string.Empty;
-            var estateTPHomeworld = _selectedScenario!.PlayerForEstateTP.Homeworld ?? string.Empty;
+            var estateTPPlayerName = _selectedScenario!.DefaultPlayerForEstateTP.PlayerName ?? string.Empty;
+            var estateTPHomeworld = _selectedScenario!.DefaultPlayerForEstateTP.Homeworld ?? string.Empty;
 
-            ImGui.TextUnformatted("Player for Estate Teleport:");
+            ImGui.TextUnformatted("Default Player for Estate Teleport:");
 
             ImGui.SetNextItemWidth(200);
             if (ImGui.InputTextWithHint("##EstateTPName", "Player Name (No World)", ref estateTPPlayerName, 32))
             {
-                _selectedScenario!.PlayerForEstateTP.PlayerName = estateTPPlayerName;
+                _selectedScenario!.DefaultPlayerForEstateTP.PlayerName = estateTPPlayerName;
+
                 // Reset CID since we manually changed the name,
-                // it's not used anyway but if we happen to use it in the future we will see there is an issue
-                _selectedScenario!.PlayerForEstateTP.ContentId = null;
-                _selectedScenario!.PlayerForEstateTP.WorldId = null;
+                var arPlayer = Service.FindARPlayerFromPlayerModel(new PlayerModel(estateTPPlayerName, estateTPHomeworld));
+                _selectedScenario!.DefaultPlayerForEstateTP.ContentId = arPlayer?.CID;
+                _selectedScenario!.DefaultPlayerForEstateTP.WorldId = null;
+
                 Configuration.Instance.Save();
             }
 
@@ -158,11 +139,13 @@ public partial class MainWindow
             ImGui.SetNextItemWidth(150);
             if (ImGui.InputTextWithHint("##EstateTPWorld", "World", ref estateTPHomeworld, 32))
             {
-                _selectedScenario.PlayerForEstateTP.Homeworld = estateTPHomeworld;
+                _selectedScenario.DefaultPlayerForEstateTP.Homeworld = estateTPHomeworld;
+
                 // Reset CID since we manually changed the name,
-                // it's not used anyway but if we happen to use it in the future we will see there is an issue
-                _selectedScenario!.PlayerForEstateTP.ContentId = null;
-                _selectedScenario!.PlayerForEstateTP.WorldId = null;
+                var arPlayer = Service.FindARPlayerFromPlayerModel(new PlayerModel(estateTPPlayerName, estateTPHomeworld));
+                _selectedScenario!.DefaultPlayerForEstateTP.ContentId = arPlayer?.CID;
+                _selectedScenario!.DefaultPlayerForEstateTP.WorldId = null;
+
                 Configuration.Instance.Save();
             }
 
@@ -171,7 +154,7 @@ public partial class MainWindow
                 var localPlayer = NoireService.ObjectTable.LocalPlayer;
                 if (localPlayer != null)
                 {
-                    _selectedScenario!.PlayerForEstateTP = new PlayerModel(localPlayer);
+                    _selectedScenario!.DefaultPlayerForEstateTP = new PlayerModel(localPlayer);
                     Configuration.Instance.Save();
                 }
             }
@@ -192,79 +175,79 @@ public partial class MainWindow
             {
                 if (ImGui.Button($"Set to Current Target{(isPlayer ? $" ({targetPlayerName}@{targetPlayerWorld})" : " (Invalid Player)")}##EstateTP"))
                 {
-                    _selectedScenario!.PlayerForEstateTP = new PlayerModel((IPlayerCharacter)target!);
+                    _selectedScenario!.DefaultPlayerForEstateTP = new PlayerModel((IPlayerCharacter)target!);
                     Configuration.Instance.Save();
                 }
             }
 
-            ImGui.Spacing();
+            //ImGui.Spacing();
 
-            ImGui.TextUnformatted("Estate to teleport to:");
+            //ImGui.TextUnformatted("Estate to teleport to:");
 
-            var currentDestination = (int)_selectedScenario!.DestinationType;
-            var destinationNames = Enum.GetNames(typeof(DestinationType));
+            //var currentDestination = (int)_selectedScenario!.DestinationType;
+            //var destinationNames = Enum.GetNames(typeof(DestinationType));
 
-            ImGui.SetNextItemWidth(200);
-            if (ImGui.Combo("##DestinationType", ref currentDestination, destinationNames, destinationNames.Length))
-            {
-                _selectedScenario.DestinationType = (DestinationType)currentDestination;
-                Configuration.Instance.Save();
-            }
+            //ImGui.SetNextItemWidth(200);
+            //if (ImGui.Combo("##DestinationType", ref currentDestination, destinationNames, destinationNames.Length))
+            //{
+            //    _selectedScenario.DestinationType = (DestinationType)currentDestination;
+            //    Configuration.Instance.Save();
+            //}
 
-            if (_selectedScenario!.DestinationType == DestinationType.FCChamber ||
-                _selectedScenario!.DestinationType == DestinationType.Apartment)
-            {
-                ImGui.Spacing();
-                var chamberOrApartmentNumber = _selectedScenario.ChamberOrApartmentNumber;
-                ImGui.TextUnformatted("Chamber/Apartment Number:");
-                ImGui.SetNextItemWidth(200);
-                if (ImGui.InputInt("##ChamberOrApartmentNumber", ref chamberOrApartmentNumber, flags: ImGuiInputTextFlags.CallbackCompletion))
-                {
-                    chamberOrApartmentNumber = Math.Max(1, chamberOrApartmentNumber);
-                    _selectedScenario.ChamberOrApartmentNumber = chamberOrApartmentNumber;
-                    Configuration.Instance.Save();
-                }
-            }
+            //if (_selectedScenario!.DestinationType == DestinationType.FCChamber ||
+            //    _selectedScenario!.DestinationType == DestinationType.Apartment)
+            //{
+            //    ImGui.Spacing();
+            //    var chamberOrApartmentNumber = _selectedScenario.ChamberOrApartmentNumber;
+            //    ImGui.TextUnformatted("Chamber/Apartment Number:");
+            //    ImGui.SetNextItemWidth(200);
+            //    if (ImGui.InputInt("##ChamberOrApartmentNumber", ref chamberOrApartmentNumber, flags: ImGuiInputTextFlags.CallbackCompletion))
+            //    {
+            //        chamberOrApartmentNumber = Math.Max(1, chamberOrApartmentNumber);
+            //        _selectedScenario.ChamberOrApartmentNumber = chamberOrApartmentNumber;
+            //        Configuration.Instance.Save();
+            //    }
+            //}
 
-            ImGui.Spacing();
+            //ImGui.Spacing();
 
-            var currentOutdoorDestinationTerritoryId = _selectedScenario.DestinationOutsideTerritoryId;
-            ImGui.TextUnformatted("Territory ID of Estate Outdoors: ");
-            ImGui.SameLine();
-            ImGui.TextUnformatted($"{(currentOutdoorDestinationTerritoryId == null ? "none" : currentOutdoorDestinationTerritoryId)}");
-            ImGui.Spacing();
-            if (ImGui.Button("Set to Current Territory ID##Outdoors"))
-            {
-                var territoryId = NoireService.ClientState.TerritoryType;
-                if (ExcelSheetHelper.GetSheet<TerritoryType>()?.TryGetRow(territoryId, out var territoryRow) ?? false)
-                {
-                    _selectedScenario.DestinationOutsideTerritoryId = territoryRow.RowId;
-                    Configuration.Instance.Save();
-                }
-                else
-                {
-                    NoireLogger.LogError($"Failed to get TerritoryType row for ID {territoryId}");
-                }
-            }
+            //var currentOutdoorDestinationTerritoryId = _selectedScenario.DestinationOutsideTerritoryId;
+            //ImGui.TextUnformatted("Territory ID of Estate Outdoors: ");
+            //ImGui.SameLine();
+            //ImGui.TextUnformatted($"{(currentOutdoorDestinationTerritoryId == null ? "none" : currentOutdoorDestinationTerritoryId)}");
+            //ImGui.Spacing();
+            //if (ImGui.Button("Set to Current Territory ID##Outdoors"))
+            //{
+            //    var territoryId = NoireService.ClientState.TerritoryType;
+            //    if (ExcelSheetHelper.GetSheet<TerritoryType>()?.TryGetRow(territoryId, out var territoryRow) ?? false)
+            //    {
+            //        _selectedScenario.DestinationOutsideTerritoryId = territoryRow.RowId;
+            //        Configuration.Instance.Save();
+            //    }
+            //    else
+            //    {
+            //        NoireLogger.LogError($"Failed to get TerritoryType row for ID {territoryId}");
+            //    }
+            //}
 
-            var currentIndoorDestinationTerritoryId = _selectedScenario.DestinationIndoorTerritoryId;
-            ImGui.TextUnformatted("Territory ID of Estate Indoors: ");
-            ImGui.SameLine();
-            ImGui.TextUnformatted($"{(currentIndoorDestinationTerritoryId == null ? "none" : currentIndoorDestinationTerritoryId)}");
-            ImGui.Spacing();
-            if (ImGui.Button("Set to Current Territory ID##Indoors"))
-            {
-                var territoryId = NoireService.ClientState.TerritoryType;
-                if (ExcelSheetHelper.GetSheet<TerritoryType>()?.TryGetRow(territoryId, out var territoryRow) ?? false)
-                {
-                    _selectedScenario.DestinationIndoorTerritoryId = territoryRow.RowId;
-                    Configuration.Instance.Save();
-                }
-                else
-                {
-                    NoireLogger.LogError($"Failed to get TerritoryType row for ID {territoryId}");
-                }
-            }
+            //var currentIndoorDestinationTerritoryId = _selectedScenario.DestinationIndoorTerritoryId;
+            //ImGui.TextUnformatted("Territory ID of Estate Indoors: ");
+            //ImGui.SameLine();
+            //ImGui.TextUnformatted($"{(currentIndoorDestinationTerritoryId == null ? "none" : currentIndoorDestinationTerritoryId)}");
+            //ImGui.Spacing();
+            //if (ImGui.Button("Set to Current Territory ID##Indoors"))
+            //{
+            //    var territoryId = NoireService.ClientState.TerritoryType;
+            //    if (ExcelSheetHelper.GetSheet<TerritoryType>()?.TryGetRow(territoryId, out var territoryRow) ?? false)
+            //    {
+            //        _selectedScenario.DestinationIndoorTerritoryId = territoryRow.RowId;
+            //        Configuration.Instance.Save();
+            //    }
+            //    else
+            //    {
+            //        NoireLogger.LogError($"Failed to get TerritoryType row for ID {territoryId}");
+            //    }
+            //}
 
             ImGui.Spacing();
             ImGui.Separator();
@@ -273,22 +256,24 @@ public partial class MainWindow
             ImGui.Text("Global Gils Transfer Settings:");
             ImGui.Spacing();
 
-            var minGilsToConsiderCharacters = Configuration.Instance.MinGilsToConsiderCharacters;
-            ImGui.TextUnformatted($"Ignore characters with less than X gil (Minimum {Configuration.Instance.GilsToLeaveOnCharacters}):");
+            var minGilsToConsiderCharacters = _selectedScenario!.MinGilsToConsiderCharacters;
+            ImGui.TextUnformatted($"Ignore characters with less than X gil (Minimum {_selectedScenario!.GilsToLeaveOnCharacters}):");
             ImGui.SetNextItemWidth(200);
             if (ImGui.InputInt("##MinGilsToConsiderCharacters", ref minGilsToConsiderCharacters, flags: ImGuiInputTextFlags.CallbackCompletion))
             {
-                minGilsToConsiderCharacters = Math.Max(Configuration.Instance.GilsToLeaveOnCharacters, minGilsToConsiderCharacters);
-                Configuration.Instance.MinGilsToConsiderCharacters = minGilsToConsiderCharacters;
+                minGilsToConsiderCharacters = Math.Max(_selectedScenario!.GilsToLeaveOnCharacters, minGilsToConsiderCharacters);
+                _selectedScenario!.MinGilsToConsiderCharacters = minGilsToConsiderCharacters;
                 Configuration.Instance.Save();
             }
 
-            var gilsToLeaveOnCharacters = Configuration.Instance.GilsToLeaveOnCharacters;
+            var gilsToLeaveOnCharacters = _selectedScenario!.GilsToLeaveOnCharacters;
             ImGui.TextUnformatted($"At the very least, this amount of gils will be left on each characters:");
-            using (ImRaii.Disabled(true))
+            ImGui.SetNextItemWidth(200);
+            if (ImGui.InputInt("##GilsToLeaveOnCharacters", ref gilsToLeaveOnCharacters))
             {
-                ImGui.SetNextItemWidth(200);
-                ImGui.InputInt("##GilsToLeaveOnCharacters", ref gilsToLeaveOnCharacters);
+                gilsToLeaveOnCharacters = Math.Max(0, gilsToLeaveOnCharacters);
+                _selectedScenario!.GilsToLeaveOnCharacters = gilsToLeaveOnCharacters;
+                Configuration.Instance.Save();
             }
         }
     }

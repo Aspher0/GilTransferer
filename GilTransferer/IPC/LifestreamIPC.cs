@@ -194,4 +194,22 @@ public class LifestreamIPC
             return false;
         return _connectAndLogin?.Invoke(characterName, worldName) ?? false;
     }
+
+    [EzIPC("ConnectAndTravel")] public Func<string, string, string, bool, bool> _connectAndTravel;
+
+    public bool ConnectAndTravel(string characterName, string characterHomeworld, string destination, bool noLogin)
+    {
+        if (!IsAvailable())
+            return false;
+        return _connectAndTravel?.Invoke(characterName, characterHomeworld, destination, noLogin) ?? false;
+    }
+
+    [EzIPC("CanAutoLogin")] public Func<bool> _canAutoLogin;
+
+    public bool CanAutoLogin()
+    {
+        if (!IsAvailable())
+            return false;
+        return _canAutoLogin?.Invoke() ?? false;
+    }
 }

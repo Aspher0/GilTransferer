@@ -3,8 +3,8 @@ using Dalamud.Game.ClientState.Objects.Enums;
 using Dalamud.Game.ClientState.Objects.SubKinds;
 using Dalamud.Interface.Utility.Raii;
 using Dalamud.Interface.Windowing;
-using ECommons;
 using ECommons.MathHelpers;
+using FFXIVClientStructs.FFXIV.Client.Game;
 using GilTransferer.Enums;
 using Lumina.Excel.Sheets;
 using NoireLib;
@@ -26,7 +26,7 @@ public class DebugWindow : Window, IDisposable
         };
     }
 
-    public override void Draw()
+    public unsafe override void Draw()
     {
         ImGui.Spacing();
 
@@ -69,7 +69,10 @@ public class DebugWindow : Window, IDisposable
                 case (uint)EntranceType.ApartmentEntrance:
                     ImGui.TextUnformatted("Target is an Apartment Entrance.");
                     break;
-                case (uint)EntranceType.WorkshopEntrance:
+                case (uint)EntranceType.WorkshopEntranceMistAndLB:
+                case (uint)EntranceType.WorkshopEntranceEmpyreum:
+                case (uint)EntranceType.WorkshopEntranceUldah:
+                case (uint)EntranceType.WorkshopEntranceShirogane:
                     ImGui.TextUnformatted("Target is a Workshop Entrance.");
                     break;
                 default:
@@ -134,6 +137,26 @@ public class DebugWindow : Window, IDisposable
                 NoireLogger.LogError(this, ex, "Lifestream IPC Error: ");
                 throw;
             }
+        }
+
+
+        using (var child = ImRaii.Child("##DebugInfoChild", new Vector2(-1, 0), true))
+        {
+            var housingManager = HousingManager.Instance();
+            var ward = housingManager->GetCurrentWard();
+            var plot = housingManager->GetCurrentPlot() + 1;
+            var room = housingManager->GetCurrentRoom();
+            var houseId = housingManager->GetCurrentIndoorHouseId();
+            var isInside = housingManager->IsInside();
+
+            var territoryType = NoireService.ClientState.TerritoryType;
+            var placeNameId = ExcelSheetHelper.GetSheet<TerritoryType>()!.GetRow(territoryType)!.PlaceNameZone.Value.RowId;
+
+            ImGui.Text($"Current Ward: {ward}");
+            ImGui.Text($"Current Plot: {plot}");
+            ImGui.Text($"Is inside: {isInside}");
+            ImGui.Text($"territoryType: {territoryType}, PlaceNameId: {placeNameId}");
+            ImGui.Text($"Current Room: {room} (Is apartment: {houseId.IsApartment})");
         }
     }
 

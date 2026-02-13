@@ -1,5 +1,3 @@
-using Dalamud.Utility;
-using GilTransferer.Enums;
 using NoireLib.Helpers;
 using NoireLib.Models;
 using System;
@@ -22,49 +20,23 @@ public class Scenario
     public string ScenarioName { get; set; } = string.Empty;
 
     /// <summary>
-    /// Represents the player that will receive the gils.
-    /// </summary>
-    // Don't think this is useful anymore, but leaving it for now
-    public PlayerModel ReceivingPlayer { get; set; }
-
-    // =============== Might need to move this to Mannequin later ===============
-
-    /// <summary>
     /// Represents the player that is in every alt friendlist used for estate teleportation.
     /// </summary>
-    public PlayerModel PlayerForEstateTP { get; set; }
-
-    /// <summary>
-    /// The type of estate the mannequins are located in.
-    /// </summary>
-    public DestinationType DestinationType { get; set; }
-
-    /// <summary>
-    /// The territory ID of the destination estate (outside area).
-    /// </summary>
-    public uint? DestinationOutsideTerritoryId { get; set; } = null;
-
-    /// <summary>
-    /// The territory ID of the destination estate (indoor area).
-    /// </summary>
-    public uint? DestinationIndoorTerritoryId { get; set; } = null;
-
-    /// <summary>
-    /// The chamber number of the destination estate (if applicable).
-    /// </summary>
-    public int ChamberOrApartmentNumber { get; set; } = 1;
+    public PlayerModel DefaultPlayerForEstateTP { get; set; }
 
     // ==========================================================================
 
     /// <summary>
-    /// A flag indicating whether to show all characters in the combo box, regardless of their gil amount.
+    /// Determines the minimum amount of gils a character must have to be considered for gil transfer.
     /// </summary>
-    public bool ShowAllCharsInComboBox { get; set; } = false;
+    public int MinGilsToConsiderCharacters { get; set; } = 100000;
 
     /// <summary>
-    /// A flag indicating whether to hide characters that are already assigned to any mannequin slot in the combo box.
+    /// Determines the approximate amount of gils to keep on each characters (will be a bit less with TP fees).
     /// </summary>
-    public bool HideAlreadyAssignedCharactersInComboBox { get; set; } = false;
+    public int GilsToLeaveOnCharacters { get; set; } = 25000;
+
+    // ==========================================================================
 
     /// <summary>
     /// Represents a list of Mannequins that will be used to transfer gils.<br/>
@@ -72,25 +44,19 @@ public class Scenario
     /// </summary>
     public List<Mannequin> Mannequins { get; set; } = new();
 
+
+
     [JsonConstructor]
-    public Scenario(string uniqueId, string scenarioName, PlayerModel receivingPlayer, DestinationType destinationType = DestinationType.Private)
+    public Scenario(string uniqueId, string scenarioName, PlayerModel defaultPlayerForEstateTP)
     {
         UniqueID = uniqueId;
         ScenarioName = scenarioName;
-        ReceivingPlayer = receivingPlayer;
-        PlayerForEstateTP = receivingPlayer.Clone();
-        DestinationType = destinationType;
+        DefaultPlayerForEstateTP = defaultPlayerForEstateTP;
     }
 
-    public Scenario(PlayerModel receivingPlayer, string? scenarioName = null, DestinationType destinationType = DestinationType.Private)
+    public Scenario(PlayerModel playerForEstateTp, string? scenarioName = null)
     {
-        if (scenarioName.IsNullOrEmpty())
-            ScenarioName = receivingPlayer.FullName;
-        else
-            ScenarioName = scenarioName;
-
-        ReceivingPlayer = receivingPlayer;
-        PlayerForEstateTP = receivingPlayer.Clone();
-        DestinationType = destinationType;
+        ScenarioName = scenarioName ?? playerForEstateTp.FullName;
+        DefaultPlayerForEstateTP = playerForEstateTp.Clone();
     }
 }

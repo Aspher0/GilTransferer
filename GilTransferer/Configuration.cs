@@ -26,14 +26,14 @@ public class Configuration : NoireConfigBase<Configuration>
     public virtual Dictionary<SlotType, uint> ItemsPerSlot { get; set; } = new();
 
     /// <summary>
-    /// Determines the minimum amount of gils a character must have to be considered for gil transfer to this scenario.
+    /// A flag indicating whether to show all characters in the combo box, regardless of their gil amount.
     /// </summary>
     [AutoSave]
-    public virtual int MinGilsToConsiderCharacters { get; set; } = 100000;
+    public virtual bool ShowAllCharsInComboBox { get; set; } = false;
 
     /// <summary>
-    /// Determines the amount of gils to keep on each characters.
+    /// A flag indicating whether to hide characters that are already assigned to any mannequin slot in the combo box.
     /// </summary>
-    // Todo: Make editable in the future (if so add virtual modifier for NoireConfigBase auto save)
-    public readonly int GilsToLeaveOnCharacters = 25000;
+    [AutoSave]
+    public virtual bool HideAlreadyAssignedCharactersInComboBox { get; set; } = false;
 }

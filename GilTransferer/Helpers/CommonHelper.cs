@@ -1,3 +1,4 @@
+using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Memory;
 using ECommons.MathHelpers;
 using FFXIVClientStructs.FFXIV.Client.System.Framework;
@@ -40,6 +41,17 @@ public static class CommonHelper
         }
 
         return false;
+    }
+
+    public static bool IsOccupied()
+    {
+        return NoireService.Condition.Any(
+            ConditionFlag.Jumping,
+            ConditionFlag.Jumping61,
+            ConditionFlag.BetweenAreas,
+            ConditionFlag.BetweenAreas51,
+            ConditionFlag.Casting,
+            ConditionFlag.Casting87);
     }
 
     /// <summary>
@@ -129,7 +141,7 @@ public static class CommonHelper
     /// <summary>
     /// Calculates the final price of a slot based on the assigned character's gil amount and configuration settings.
     /// </summary>
-    public static int? GetFinalPriceOfSlot(SlotType slotType, MannequinSlot mannequinSlot)
+    public static int? GetFinalPriceOfSlot(SlotType slotType, MannequinSlot mannequinSlot, Scenario selectedScenario)
     {
         var assignedCharacter = mannequinSlot.AssignedCharacter;
 
@@ -142,10 +154,10 @@ public static class CommonHelper
 
         var gils = data.Gil;
 
-        if (gils < Math.Max(Configuration.Instance.GilsToLeaveOnCharacters, Configuration.Instance.MinGilsToConsiderCharacters))
+        if (gils < Math.Max(selectedScenario.GilsToLeaveOnCharacters, selectedScenario.MinGilsToConsiderCharacters))
             return null;
 
-        var finalPriceOfSlot = gils - Configuration.Instance.GilsToLeaveOnCharacters;
+        var finalPriceOfSlot = gils - selectedScenario.GilsToLeaveOnCharacters;
         return (int)finalPriceOfSlot;
     }
 
@@ -189,5 +201,13 @@ public static class CommonHelper
         }
 
         return false;
+    }
+
+    public static bool IsAnyWorkshopEntrance(uint baseId)
+    {
+        return baseId == (uint)EntranceType.WorkshopEntranceMistAndLB ||
+               baseId == (uint)EntranceType.WorkshopEntranceUldah ||
+               baseId == (uint)EntranceType.WorkshopEntranceShirogane ||
+               baseId == (uint)EntranceType.WorkshopEntranceEmpyreum;
     }
 }

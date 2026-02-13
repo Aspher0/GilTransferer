@@ -72,30 +72,31 @@ public partial class MainWindow
                         var ioScenario = ImGui.GetIO();
                         bool ctrlShiftHeldScenario = ioScenario.KeyCtrl && ioScenario.KeyShift;
 
-                        if (ImGui.BeginPopupContextItem($"##ScenarioContext{i}"))
+                        using (var contextPopup = ImRaii.ContextPopupItem($"##ScenarioContext{i}"))
                         {
-                            using (ImRaii.Disabled(!ctrlShiftHeldScenario))
+                            if (contextPopup)
                             {
-                                if (ImGui.MenuItem("Delete"))
+                                using (ImRaii.Disabled(!ctrlShiftHeldScenario))
                                 {
-                                    scenarios.RemoveAt(i);
-                                    Configuration.Instance.Save();
-                                    if (_selectedScenarioIndex == i)
+                                    if (ImGui.MenuItem("Delete"))
                                     {
-                                        _selectedScenarioIndex = -1;
-                                        _selectedScenario = null;
+                                        scenarios.RemoveAt(i);
+                                        Configuration.Instance.Save();
+                                        if (_selectedScenarioIndex == i)
+                                        {
+                                            _selectedScenarioIndex = -1;
+                                            _selectedScenario = null;
+                                        }
+                                        ImGui.EndPopup();
+                                        return;
                                     }
-                                    ImGui.EndPopup();
-                                    return;
+                                }
+
+                                if (!ctrlShiftHeldScenario && ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+                                {
+                                    ImGui.SetTooltip("Hold CTRL and Shift to delete");
                                 }
                             }
-
-                            if (!ctrlShiftHeldScenario && ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
-                            {
-                                ImGui.SetTooltip("Hold CTRL and Shift to delete");
-                            }
-
-                            ImGui.EndPopup();
                         }
 
                         if (ImGui.IsItemVisible())
@@ -105,7 +106,7 @@ public partial class MainWindow
 
                             ImGui.TextUnformatted($"{scenario.ScenarioName ?? "Unknown Scenario"}");
                             ImGui.TextColored(new Vector4(0.6f, 0.8f, 1.0f, 1.0f),
-                              $"{scenario.DestinationType} | {scenario.Mannequins.Count} Mannequin(s)");
+                              $"{scenario.Mannequins.Count} Mannequin(s)");
 
                             ImGui.SetCursorPos(cursorPos);
                         }

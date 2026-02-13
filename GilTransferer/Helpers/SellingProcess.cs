@@ -33,13 +33,13 @@ public static class SellingProcess
         foreach (var mannequin in scenario.Mannequins)
         {
             NoireLogger.LogDebug($"Processing mannequin for BaseId {mannequin.BaseId} at position {mannequin.Position}");
-            ProcessMannequin(mannequin);
+            ProcessMannequin(mannequin, scenario);
         }
 
         Service.TaskQueue.StartQueue();
     }
 
-    public static unsafe void ProcessMannequin(Mannequin? mannequin, bool startQueue = false)
+    public static unsafe void ProcessMannequin(Mannequin? mannequin, Scenario selectedScenario, bool startQueue = false)
     {
         if (mannequin == null)
             return;
@@ -93,8 +93,10 @@ public static class SellingProcess
 
         foreach (var (slotType, mannequinSlot) in mannequin.Slots)
         {
-            EnsureSlotEmpty(slotType, mannequinSlot);
-            SetSlotOnMannequin(slotType, mannequinSlot);
+            if (mannequinSlot.AssignedCharacter == null)
+                continue;
+            EnsureSlotEmpty(slotType, mannequinSlot, selectedScenario);
+            SetSlotOnMannequin(slotType, mannequinSlot, selectedScenario);
         }
 
         CloseMannequinMerchantSetting();
@@ -175,15 +177,11 @@ public static class SellingProcess
         TaskBuilder.AddDelayMilliseconds(500, Service.TaskQueue);
     }
 
-    private static unsafe void EnsureSlotEmpty(SlotType slotType, MannequinSlot mannequinSlot)
+    private static unsafe void EnsureSlotEmpty(SlotType slotType, MannequinSlot mannequinSlot, Scenario selectedScenario)
     {
-        var finalPriceOfSlot = CommonHelper.GetFinalPriceOfSlot(slotType, mannequinSlot);
-
+        var finalPriceOfSlot = CommonHelper.GetFinalPriceOfSlot(slotType, mannequinSlot, selectedScenario);
         if (finalPriceOfSlot == null)
-        {
-            NoireLogger.LogDebug($"Skipping slot {slotType} for {mannequinSlot.AssignedCharacter?.UniqueId}, not enough gils or no item configured.");
             return;
-        }
 
         var slotNumber = (uint)slotType;
 
@@ -272,12 +270,20 @@ public static class SellingProcess
             .EnqueueTo(Service.TaskQueue);
     }
 
-    private static unsafe void SetSlotOnMannequin(SlotType slotType, MannequinSlot mannequinSlot)
+    private static unsafe void SetSlotOnMannequin(SlotType slotType, MannequinSlot mannequinSlot, Scenario selectedScenario)
     {
-        var finalPriceOfSlot = CommonHelper.GetFinalPriceOfSlot(slotType, mannequinSlot);
+        if (!Configuration.Instance.ItemsPerSlot.ContainsKey(slotType))
+        {
+            var message = $"Skipping slot {slotType} because there is no configured item to sell. Please add an item for this slot in the configuration.";
+            NoireLogger.PrintToChat(message);
+            NoireLogger.LogDebug(message);
+            return;
+        }
+
+        var finalPriceOfSlot = CommonHelper.GetFinalPriceOfSlot(slotType, mannequinSlot, selectedScenario);
         if (finalPriceOfSlot == null)
         {
-            NoireLogger.LogDebug($"Skipping slot {slotType} for {mannequinSlot.AssignedCharacter?.UniqueId}, not enough gils or no item configured.");
+            NoireLogger.LogDebug($"Skipping slot {slotType}, target char has not enough gils.");
             return;
         }
 

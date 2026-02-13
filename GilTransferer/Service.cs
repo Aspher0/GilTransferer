@@ -5,6 +5,7 @@ using NoireLib;
 using NoireLib.EventBus;
 using NoireLib.Helpers;
 using NoireLib.Helpers.ObjectExtensions;
+using NoireLib.Models;
 using NoireLib.TaskQueue;
 using System.Collections.Generic;
 
@@ -38,6 +39,18 @@ public static class Service
         if (!result.IsDefault())
             _cachedOfflineCharacterData[cid] = result!;
         return _cachedOfflineCharacterData.TryGetValue(cid, out var data) ? data : null;
+    }
+    public static OfflineCharacterData? FindARPlayerFromPlayerModel(PlayerModel playerToFind)
+    {
+        foreach (var cid in RegisteredCharacters)
+        {
+            var data = GetOfflineCharacterData(cid);
+            if (data != null &&
+                data.Name == playerToFind.PlayerName &&
+                data.World == playerToFind.Homeworld)
+                return data;
+        }
+        return null;
     }
 
     public static void Initialize()
