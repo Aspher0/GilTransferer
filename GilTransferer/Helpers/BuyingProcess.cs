@@ -72,6 +72,7 @@ public static class BuyingProcess
             return;
         }
 
+        Service.TaskQueue.ClearCompletedTasks();
         var nextPurchase = PendingPurchases.Dequeue();
         ProcessCharacterPurchase(nextPurchase.Scenario, nextPurchase.Mannequin, nextPurchase.MannequinSlot);
 
