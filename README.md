@@ -11,7 +11,7 @@ This is because you can not send a friend request to a character on the same ser
 This plugin works best with FCs, but you can also use it with apartments and private estates, although it will be more tedious.
 
 For this, you will need to either:
-1) Be in a FC and have a FC Room purchased on your main. Then, send a friend request to one of your FC members in the same FC on all of your alts.
+1) Be in a FC and have a FC Room purchased on your main. Then, send a friend request to one of your FC members on all of your alts.
 2) Subscribe a second service account for one month, create a character there and join the same FC as your main character. Then add all your alts as friends on this character.
 
 The plugin will then ask you to fill in the name of the character where you want to TP (in this case, the "TP middleman" -> your friend/second service account).
