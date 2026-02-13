@@ -1,8 +1,3 @@
-# Gil Transferer
-
-A plugin to facilitate transfering gils between alts within a single Service account.<br/>
-Relies on TextAdvance, YesAlready, Lifestream and AutoRetainer.
-
 # Current Todo
 - Handle apartments destination
 - Make it possible to override the player for estate tp for each mannequin
