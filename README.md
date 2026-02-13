@@ -3,26 +3,19 @@
 A plugin to facilitate transfering gils between alts within a single Service account.<br/>
 Relies on TextAdvance, YesAlready, Lifestream and AutoRetainer.
 
- # Todo
-- Remove YesAlready dependency by clicking "Yes" when entering the house, or let yesalready do it anyway if installed
-- Click yes or no when it asks if you want to use an aetheryte ticket
-- Handle different destination types (Private, Apartment, FC), right now it will only go to FC room
-- Find a better way to wait for territory change (instead of having to specify the territory id of indoors/outdoors)
-- Correctly use Lifestream to change DC (I believe right now it will login to the character, then if it needs to change DC it will logout again and change)
-- Remove unnecessary TaskQueue delays (Make processing faster overall)
-- Make the process of setting up mannequins better, right now there are a few tasks failing when setting up, not all cases are covered. It only slows the process but doesn't seem to completely block/softlock/fail it.
-- Make the process of setting up mannequins more automatic (TP to estate/room/apartment if not inside already)
-- Move some of the settings from the Scenario settings to the Mannequin settings, for example the destination type, player for estate TP, room number (etc...), instead of being global to the scenario, should be per mannequin in case they are in separate places.
-- Related to above task: have an option to also specify the estate ward/plot a mannequin is in so if 2 mannequins are in the same FC estate but different FC rooms, so that instead of TPing to estate/address again, it will just change room.
-- Before setting up a mannequin, check if the retainer has space left (the 20 slots to sell) AND if the retainer is not gil capped (if gil capped, it will go to void, we dont want our precious money to vanish)
-- Have an option to TP with lifestream address book instead.
-- In the mannequin settings, when setting up the character assigned to a slot, be able to override the amount of gils to send.
-- Make it so you process all assigned slots on a character before changing character.
-- Add a check to verify that the slot you are purchasing is the right one (Read node text for price ?)
-- Make it so that you can skip a character in queue if it fails somewhere, to continue processing other chars even if one fails.
-- Add a skip current task button in case of stalling, for "manual debugging" ?
-- Add a button to process the whole scenaro (Setup Mannequin, then process buyers)
-- Add post processing on seller, buyer, autoretainer post process and all buyers complet (When a character finishes buying, when the seller finishes setting up mannequin, when all buyers have bought all slots or on autoretainer post process when you finish sending submarines etc: send a command, move somewhere, do something ...)
-- If the plugin cannot open the friend's Estate list, skip the char
-- Add an error history to quickly view who didn't get processed and why
-- Add usage instructions
+This plugin lets you transfert gils from all of you alts on a single service account to your main character easily.
+It will teleport to one of your friend's (or alt) estate (FC, Private, Apartments) and enter it to then buy a configured slot on a mannequin.
+
+For this plugin to work, you will need an external character to act as a teleportation middleman ("external character" meaning a character on another service account).
+This is because you can not send a friend request to a character on the same service account, and you need to be able to teleport to a friend's estate for this plugin to work.
+This plugin works best with FCs, but you can also use it with apartments and private estates, although it will be more tedious.
+
+For this, you will need to either:
+1) Be in a FC and have a FC Room purchased on your main. Then, send a friend request to one of your FC members in the same FC on all of your alts.
+2) Subscribe a second service account for one month, create a character there and join the same FC as your main character. Then add all your alts as friends on this character.
+
+The plugin will then ask you to fill in the name of the character where you want to TP (in this case, the "TP middleman" -> your friend/second service account).
+During process, every alt will then open the estate list of the configured TP middleman and TP to its Free Company estate.
+It will then enter the FC, go to the right FC room (typically your Main Character's FC room) and then buy items from a mannequin.
+
+If you do not have a FC, you can use Apartments or a Private estate, but then all the gils will be collected by the TP middleman, since it will be their estate (Subject to improvements in the future).
