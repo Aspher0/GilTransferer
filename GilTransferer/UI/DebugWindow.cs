@@ -143,7 +143,7 @@ public class DebugWindow : Window, IDisposable
         using (var child = ImRaii.Child("##DebugInfoChild", new Vector2(-1, 0), true))
         {
             var housingManager = HousingManager.Instance();
-            var ward = housingManager->GetCurrentWard();
+            var ward = housingManager->GetCurrentWard() + 1;
             var plot = housingManager->GetCurrentPlot() + 1;
             var room = housingManager->GetCurrentRoom();
             var houseId = housingManager->GetCurrentIndoorHouseId();

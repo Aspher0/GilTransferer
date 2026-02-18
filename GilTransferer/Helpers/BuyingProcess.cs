@@ -253,7 +253,7 @@ public static class BuyingProcess
                     return false;
 
                 var housingManager = HousingManager.Instance();
-                var ward = housingManager->GetCurrentWard();
+                var ward = housingManager->GetCurrentWard() + 1;
 
                 if (ward != mannequin.Ward)
                     return false;
@@ -338,7 +338,7 @@ public static class BuyingProcess
 
                     // Check again if right ward and right plot
                     var housingManager = HousingManager.Instance();
-                    var ward = housingManager->GetCurrentWard();
+                    var ward = housingManager->GetCurrentWard() + 1;
                     var plot = housingManager->GetCurrentPlot() + 1;
 
                     if (ward != mannequin.Ward || plot != mannequin.Plot)
