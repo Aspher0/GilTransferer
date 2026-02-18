@@ -1,5 +1,3 @@
-using Dalamud.Game.ClientState.Conditions;
-using Dalamud.Game.ClientState.Objects.SubKinds;
 using Dalamud.Game.ClientState.Objects.Types;
 using Dalamud.Game.Text;
 using Dalamud.Utility;
@@ -7,7 +5,6 @@ using ECommons;
 using ECommons.DalamudServices.Legacy;
 using ECommons.GameFunctions;
 using FFXIVClientStructs.FFXIV.Client.Game.Control;
-using FFXIVClientStructs.FFXIV.Component.GUI;
 using GilTransferer.Enums;
 using GilTransferer.Models;
 using Lumina.Excel.Sheets;
@@ -17,7 +14,6 @@ using NoireLib.Helpers.ObjectExtensions;
 using NoireLib.TaskQueue;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Numerics;
 using Callback = ECommons.Automation.Callback;
 
@@ -32,7 +28,7 @@ public static class SellingProcess
 
         foreach (var mannequin in scenario.Mannequins)
         {
-            NoireLogger.LogDebug($"Processing mannequin for BaseId {mannequin.BaseId} at position {mannequin.Position}");
+            NoireLogger.LogDebug($"Processing mannequin for BaseId {mannequin.BaseId}");
             ProcessMannequin(mannequin, scenario);
         }
 
@@ -46,31 +42,16 @@ public static class SellingProcess
 
         var baseId = mannequin.BaseId;
         var companionOwnerId = mannequin.CompanionOwnerId;
-        var position = mannequin.Position;
 
-        var allNpcs = NoireService.ObjectTable.OfType<INpc>();
-        var foundNpc = allNpcs.FirstOrDefault((npc) =>
-        {
-            var native = CharacterHelper.GetCharacterAddress(npc);
-            return npc.BaseId == baseId && native->CompanionOwnerId == companionOwnerId;
-        });
+        var foundNpc = CommonHelper.FindMannequinNpc(mannequin);
 
-        if (foundNpc.IsDefault())
+        if (foundNpc == null)
         {
-            foundNpc = allNpcs.FirstOrDefault((npc) =>
-            {
-                return npc.BaseId == baseId &&
-                       Vector3.Distance(npc.Position, position) < 0.3f;
-            });
-        }
-
-        if (foundNpc == default)
-        {
-            NoireLogger.LogDebug($"Could not find mannequin NPC for BaseId {baseId} at position {position}");
+            NoireLogger.LogDebug($"Could not find mannequin NPC for BaseId {baseId}");
             return;
         }
 
-        NoireLogger.LogDebug($"Found mannequin NPC for BaseId {baseId} at position {position}: Name={foundNpc.Name}");
+        NoireLogger.LogDebug($"Found mannequin NPC for BaseId {baseId}: Name={foundNpc.Name}");
 
         TaskBuilder.Create("Enabling TextAdvance")
             .WithAction(task =>
@@ -86,6 +67,12 @@ public static class SellingProcess
                 Service.StopQueue();
             })
             .EnqueueTo(Service.TaskQueue);
+
+        if (NoireService.ObjectTable.LocalPlayer == null)
+        {
+            NoireLogger.LogDebug("Local player is null, cannot proceed with mannequin setup.");
+            return;
+        }
 
         MoveToUntilInReach(foundNpc);
         InteractWithTarget();
@@ -110,17 +97,19 @@ public static class SellingProcess
     public static void MoveToUntilInReach(ICharacter character)
     {
         TaskBuilder.Create("Waiting to be available")
-            .WithCondition(task => !NoireService.Condition.Any(ConditionFlag.OccupiedInEvent, ConditionFlag.OccupiedInQuestEvent))
-            .WithTimeout(TimeSpan.FromSeconds(5))
+            .WithCondition(task => !CommonHelper.IsOccupied())
             .EnqueueTo(Service.TaskQueue);
-
-        TaskBuilder.AddDelayMilliseconds(500, Service.TaskQueue);
 
         TaskBuilder.Create("Target and move to Mannequin")
             .WithAction(task =>
             {
                 NoireService.TargetManager.SetTarget(character);
-                Service.LifestreamIPC.Move([character.Position]);
+
+                if (NoireService.ObjectTable.LocalPlayer == null)
+                    return;
+
+                if (Vector3.Distance(character.Position, NoireService.ObjectTable.LocalPlayer.Position) > 3.5f)
+                    Service.LifestreamIPC.Move([character.Position]);
             })
             .WithCondition(task =>
             {
@@ -135,10 +124,7 @@ public static class SellingProcess
 
                 return false;
             })
-            .WithTimeout(TimeSpan.FromSeconds(15))
             .EnqueueTo(Service.TaskQueue);
-
-        TaskBuilder.AddDelayMilliseconds(500, Service.TaskQueue);
     }
 
     public static unsafe void InteractWithTarget()
@@ -151,13 +137,14 @@ public static class SellingProcess
                 if (target == null)
                     return false;
 
+                if (CommonHelper.IsOccupied())
+                    return false;
+
                 TargetSystem.Instance()->InteractWithObject(target.Struct(), false);
                 return true;
             })
             .WithRetries(3, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5))
             .EnqueueTo(Service.TaskQueue);
-
-        TaskBuilder.AddDelayMilliseconds(500, Service.TaskQueue);
     }
 
     public static unsafe void OpenMannequinMerchantSetting()
@@ -165,16 +152,13 @@ public static class SellingProcess
         TaskBuilder.Create("Open Mannequin Merchant Setting")
             .WithCondition(task =>
             {
-                if (!GenericHelpers.TryGetAddonByName<AtkUnitBase>("SelectString", out var addon) || !GenericHelpers.IsAddonReady(addon))
+                if (!AddonHelper.TryGetReadyAddon("SelectString", out var addon))
                     return false;
 
-                Callback.Fire(addon, true, 0);
+                Callback.Fire(addon, true, 0); // Click "Select gear to sell."
                 return true;
             })
-            .WithTimeout(TimeSpan.FromSeconds(5))
             .EnqueueTo(Service.TaskQueue);
-
-        TaskBuilder.AddDelayMilliseconds(500, Service.TaskQueue);
     }
 
     private static unsafe void EnsureSlotEmpty(SlotType slotType, MannequinSlot mannequinSlot, Scenario selectedScenario)
@@ -185,13 +169,21 @@ public static class SellingProcess
 
         var slotNumber = (uint)slotType;
 
+        // Change below logic to check if slot has an item instead of using context menu
+        // if not then just skip removal
+        // if yes, check if sold.
+        // If yes, callback 13 menu will remove the item automatically without additional steps.
+        // if not sold then callback 13 + remove slot item by clicking "return to inventory" and clicking "yes" on confirmation
+
+        // Should wait merchant setting actually interactable
+
         TaskBuilder.Create("Wait for MerchantSetting Ready")
             .WithCondition(task =>
             {
-                if (!GenericHelpers.TryGetAddonByName<AtkUnitBase>("MerchantSetting", out var addon) || !GenericHelpers.IsAddonReady(addon))
+                if (!AddonHelper.TryGetReadyAddon("MerchantSetting", out var addon))
                     return false;
 
-                Callback.Fire(addon, true, 13, slotNumber);
+                Callback.Fire(addon, true, 13, slotNumber); // Right click on slot (if empty, will do nothing, if not empty will open context menu to remove item)
                 return true;
             })
             .EnqueueTo(Service.TaskQueue);
@@ -199,7 +191,7 @@ public static class SellingProcess
         TaskBuilder.Create($"Try to open context menu for slot {slotNumber} for {mannequinSlot.AssignedCharacter!.UniqueId}")
             .WithCondition(task =>
             {
-                if (GenericHelpers.TryGetAddonByName<AtkUnitBase>("ContextMenu", out var contextMenuAddon) && GenericHelpers.IsAddonReady(contextMenuAddon))
+                if (AddonHelper.TryGetReadyAddon("ContextMenu", out var contextMenuAddon))
                 {
                     // Context menu is open, meaning the slot has an item
                     task.Metadata = true;
@@ -208,7 +200,7 @@ public static class SellingProcess
                 task.Metadata = null;
                 return false;
             })
-            .WithTimeout(TimeSpan.FromSeconds(1))
+            .WithTimeout(500.Milliseconds())
             .EnqueueTo(Service.TaskQueue);
 
         TaskBuilder.Create($"Remove item from slot {slotNumber}")
@@ -219,18 +211,14 @@ public static class SellingProcess
                 if (previousTaskMetadata == null)
                     return true;
 
-                if (!GenericHelpers.TryGetAddonByName<AtkUnitBase>("ContextMenu", out var addon) || !GenericHelpers.IsAddonReady(addon))
+                if (!AddonHelper.TryGetReadyAddon("ContextMenu", out var addon))
                     return false;
 
-                Callback.Fire(addon, true, 0, 0, 0);
+                Callback.Fire(addon, true, 0, 0, 0); // Click on "Return to Inventory" in context menu
                 return true;
             })
-            .WithTimeout(TimeSpan.FromSeconds(5))
             .EnqueueTo(Service.TaskQueue);
 
-        TaskBuilder.AddDelayMilliseconds(500, Service.TaskQueue);
-
-        // When the slot on the mannequin is already bought (sold out) this task is always stalling because the SelectYesno never has to appear
         TaskBuilder.Create($"Select yes")
             .WithCondition(task =>
             {
@@ -239,34 +227,30 @@ public static class SellingProcess
                 if (previousTaskMetadata == null)
                     return true;
 
-                if (!GenericHelpers.TryGetAddonByName<AtkUnitBase>("SelectYesno", out var addon) || !GenericHelpers.IsAddonReady(addon))
+                if (!AddonHelper.TryGetReadyAddon("SelectYesno", out var addon))
                     return false;
 
                 NoireLogger.LogDebug($"Confirming Fire callback SelectYesno");
 
-                Callback.Fire(addon, true, 0);
+                Callback.Fire(addon, true, 0); // Click on "Yes" in SelectYesno
                 return true;
             })
-            .WithTimeout(TimeSpan.FromSeconds(2))
             .EnqueueTo(Service.TaskQueue);
-
-        TaskBuilder.AddDelayMilliseconds(500, Service.TaskQueue);
 
         TaskBuilder.Create($"Confirm removal for slot {slotNumber}")
             .WithCondition(task =>
             {
-                var previousTaskMetadata = TaskBuilder.GetMetadataFromTask<object?>(Service.TaskQueue, $"Try to open context menu for slot {slotNumber} for {mannequinSlot.AssignedCharacter!.UniqueId}");
+                task.Metadata = TaskBuilder.GetMetadataFromTask<object?>(Service.TaskQueue, $"Try to open context menu for slot {slotNumber} for {mannequinSlot.AssignedCharacter!.UniqueId}");
 
-                if (previousTaskMetadata == null)
+                if (task.Metadata == null)
                     return true;
 
-                if (!GenericHelpers.TryGetAddonByName<AtkUnitBase>("SelectYesno", out var addon) || !GenericHelpers.IsAddonReady(addon))
-                {
-                    return true;
-                }
-                return false;
+                if (AddonHelper.TryGetReadyAddon("SelectYesno", out var addon))
+                    return false;
+
+                return true;
             })
-            .WithTimeout(TimeSpan.FromSeconds(5))
+            .WithDelay(task => task.Metadata == null ? 0.Milliseconds() : 500.Milliseconds())
             .EnqueueTo(Service.TaskQueue);
     }
 
@@ -289,12 +273,12 @@ public static class SellingProcess
 
         var slotNumber = (uint)slotType;
 
-        TaskBuilder.AddDelayMilliseconds(500, Service.TaskQueue);
+        // Should wait merchant setting actually interactable
 
         TaskBuilder.Create("Open Select Item Menu")
             .WithCondition(task =>
             {
-                if (!GenericHelpers.TryGetAddonByName<AtkUnitBase>("MerchantSetting", out var addon) || !GenericHelpers.IsAddonReady(addon))
+                if (!AddonHelper.TryGetReadyAddon("MerchantSetting", out var addon))
                     return false;
 
                 Callback.Fire(addon, true, 12, slotNumber);
@@ -302,12 +286,10 @@ public static class SellingProcess
             })
             .EnqueueTo(Service.TaskQueue);
 
-        TaskBuilder.AddDelayMilliseconds(500, Service.TaskQueue);
-
         TaskBuilder.Create($"Find Right Item For {mannequinSlot.AssignedCharacter?.UniqueId ?? "Unknown"}")
             .WithCondition(task =>
             {
-                if (!GenericHelpers.TryGetAddonByName<AtkUnitBase>("MerchantEquipSelect", out var addon) || !GenericHelpers.IsAddonReady(addon))
+                if (!AddonHelper.TryGetReadyAddon("MerchantEquipSelect", out var addon))
                     return false;
 
                 List<int> nodes = [4];
@@ -347,13 +329,12 @@ public static class SellingProcess
 
                 return false;
             })
-            .WithTimeout(TimeSpan.FromSeconds(10))
             .EnqueueTo(Service.TaskQueue);
 
         TaskBuilder.Create("Select Item In List To Equip Slot")
             .WithCondition(task =>
             {
-                if (!GenericHelpers.TryGetAddonByName<AtkUnitBase>("MerchantEquipSelect", out var addon) || !GenericHelpers.IsAddonReady(addon))
+                if (!AddonHelper.TryGetReadyAddon("MerchantEquipSelect", out var addon))
                     return false;
 
                 var previousMetadata = TaskBuilder.GetMetadataFromTask<object?>(Service.TaskQueue, $"Find Right Item For {mannequinSlot.AssignedCharacter?.UniqueId ?? "Unknown"}");
@@ -366,35 +347,28 @@ public static class SellingProcess
             })
             .EnqueueTo(Service.TaskQueue);
 
-        TaskBuilder.AddDelayMilliseconds(500, Service.TaskQueue);
-
         TaskBuilder.Create("Get RetainerSell Addon")
             .WithCondition(task =>
             {
-                if (GenericHelpers.TryGetAddonByName<AtkUnitBase>("RetainerSell", out var addon) && GenericHelpers.IsAddonReady(addon))
+                if (AddonHelper.TryGetReadyAddon("RetainerSell", out var addon))
                 {
                     Callback.Fire(addon, true, 2, (int)finalPriceOfSlot);
-                    task.Metadata = new PointerMetadata<AtkUnitBase>(addon);
                     return true;
                 }
                 return false;
             })
-            .WithTimeout(TimeSpan.FromSeconds(5))
             .EnqueueTo(Service.TaskQueue);
-
-        TaskBuilder.AddDelayMilliseconds(500, Service.TaskQueue);
 
         TaskBuilder.Create("Confirm Selling Item")
             .WithCondition(task =>
             {
-                if (GenericHelpers.TryGetAddonByName<AtkUnitBase>("RetainerSell", out var addon) && GenericHelpers.IsAddonReady(addon))
+                if (AddonHelper.TryGetReadyAddon("RetainerSell", out var addon))
                 {
                     Callback.Fire(addon, true, 0);
                     return true;
                 }
                 return false;
             })
-            .WithTimeout(TimeSpan.FromSeconds(5))
             .EnqueueTo(Service.TaskQueue);
 
         TaskBuilder.AddDelayMilliseconds(500, Service.TaskQueue);
@@ -405,25 +379,23 @@ public static class SellingProcess
         TaskBuilder.Create("Close Mannequin Merchant Setting")
             .WithCondition(task =>
             {
-                if (!GenericHelpers.TryGetAddonByName<AtkUnitBase>("MerchantSetting", out var addon) || !GenericHelpers.IsAddonReady(addon))
+                if (!AddonHelper.TryGetReadyAddon("MerchantSetting", out var addon))
                     return false;
 
                 Callback.Fire(addon, true, 11, 0);
                 return true;
             })
-            .WithTimeout(TimeSpan.FromSeconds(5))
             .EnqueueTo(Service.TaskQueue);
 
         TaskBuilder.Create("Close Mannequin Merchant Setting")
             .WithCondition(task =>
             {
-                if (!GenericHelpers.TryGetAddonByName<AtkUnitBase>("SelectString", out var addon) || !GenericHelpers.IsAddonReady(addon))
+                if (!AddonHelper.TryGetReadyAddon("SelectString", out var addon))
                     return false;
 
                 Callback.Fire(addon, true, 6);
                 return true;
             })
-            .WithTimeout(TimeSpan.FromSeconds(5))
             .EnqueueTo(Service.TaskQueue);
     }
 }

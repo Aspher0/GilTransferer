@@ -111,4 +111,19 @@ public class Mannequin
             }
         }
     }
+
+    public bool Equals(Mannequin other, bool ignorePosition = false)
+    {
+        if (other == null)
+            return false;
+
+        return BaseId == other.BaseId &&
+               CompanionOwnerId == other.CompanionOwnerId &&
+               (ignorePosition || Position == other.Position) &&
+               DestinationType == other.DestinationType &&
+               PlaceNameId == other.PlaceNameId &&
+               Ward == other.Ward &&
+               Plot == other.Plot &&
+               ChamberOrApartmentNumber == other.ChamberOrApartmentNumber;
+    }
 }

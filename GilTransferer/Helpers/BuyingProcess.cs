@@ -12,7 +12,6 @@ using GilTransferer.Models;
 using Lumina.Excel.Sheets;
 using NoireLib;
 using NoireLib.Helpers;
-using NoireLib.Helpers.ObjectExtensions;
 using NoireLib.TaskQueue;
 using System;
 using System.Collections.Generic;
@@ -395,17 +394,14 @@ public static class BuyingProcess
         TaskBuilder.Create($"Target and move to Mannequin {mannequin.UniqueId}")
             .WithAction(task =>
             {
-                var allNpcs = NoireService.ObjectTable.OfType<INpc>();
-                var foundNpc = allNpcs.FirstOrDefault((npc) =>
-                {
-                    var native = CharacterHelper.GetCharacterAddress(npc);
-                    return npc.BaseId == mannequin.BaseId && native->CompanionOwnerId == mannequin.CompanionOwnerId;
-                });
-
+                var foundNpc = CommonHelper.FindMannequinNpc(mannequin);
                 task.Metadata = foundNpc;
 
-                NoireService.TargetManager.SetTarget(foundNpc!);
-                Service.LifestreamIPC.Move([foundNpc!.Position]);
+                if (foundNpc == null)
+                    return;
+
+                NoireService.TargetManager.SetTarget(foundNpc);
+                Service.LifestreamIPC.Move([foundNpc.Position]);
             })
             .WithCondition(task =>
             {
@@ -640,23 +636,9 @@ public static class BuyingProcess
 
                 bool occupied = CommonHelper.IsOccupied();
 
-                var allNpcs = NoireService.ObjectTable.OfType<INpc>();
-                var foundNpc = allNpcs.FirstOrDefault((npc) =>
-                {
-                    var native = CharacterHelper.GetCharacterAddress(npc);
-                    return npc.BaseId == mannequin.BaseId && native->CompanionOwnerId == mannequin.CompanionOwnerId;
-                });
+                var foundNpc = CommonHelper.FindMannequinNpc(mannequin);
 
-                if (foundNpc.IsDefault())
-                {
-                    foundNpc = allNpcs.FirstOrDefault((npc) =>
-                    {
-                        return npc.BaseId == mannequin.BaseId &&
-                               Vector3.Distance(npc.Position, mannequin.Position) < 0.3f;
-                    });
-                }
-
-                if (foundNpc == default)
+                if (foundNpc == null)
                     return false;
 
                 return !occupied;

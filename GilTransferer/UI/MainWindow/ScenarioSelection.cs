@@ -62,10 +62,17 @@ public partial class MainWindow
 
                     using (ImRaii.PushId(i))
                     {
-                        if (ImGui.Selectable($"##Scenario{i}", isSelected, ImGuiSelectableFlags.None, new Vector2(0, 40)))
+                        if (ImGui.Selectable($"##Scenario{i}", isSelected, ImGuiSelectableFlags.AllowDoubleClick, new Vector2(0, 40)))
                         {
                             _selectedScenarioIndex = i;
                             _selectedScenario = scenario;
+                        }
+
+                        if (ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left) && ImGui.IsItemHovered())
+                        {
+                            _currentMode = UIMode.ScenarioConfiguration;
+                            _selectedMannequin = null;
+                            _selectedMannequinIndex = -1;
                         }
 
                         // Right-click context menu

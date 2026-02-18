@@ -3,7 +3,6 @@ using Dalamud.Game.ClientState.Objects.Enums;
 using Dalamud.Game.ClientState.Objects.SubKinds;
 using Dalamud.Interface;
 using Dalamud.Interface.Utility.Raii;
-using FFXIVClientStructs.FFXIV.Client.Game;
 using GilTransferer.Enums;
 using GilTransferer.Helpers;
 using GilTransferer.Models;
@@ -20,6 +19,8 @@ namespace GilTransferer.UI;
 
 public partial class MainWindow
 {
+    private static Dictionary<string, (ulong cid, string name, string world, long gil, string displayText)> characterLookup = [];
+
     private unsafe void DrawMannequinsTab()
     {
         float availableYSpace = ImGui.GetContentRegionAvail().Y;
@@ -42,9 +43,8 @@ public partial class MainWindow
 
                     using (ImRaii.PushId(i))
                     {
-                        var isTargeted = (NoireService.TargetManager.Target is INpc targetNpc2 &&
-                                         targetNpc2.BaseId == mannequin.BaseId &&
-                                         CharacterHelper.GetCharacterAddress(targetNpc2)->CompanionOwnerId == mannequin.CompanionOwnerId);
+                        var isTargeted = NoireService.TargetManager.Target is INpc targetNpc2 &&
+                                         mannequin.Equals(CommonHelper.MakeMannequin(targetNpc2), true);
 
                         if (ImGui.Selectable($"Mannequin #{i + 1}{(isTargeted ? " (Current Target)" : "")}##Mannequin{i}", isSelected))
                         {
@@ -100,14 +100,52 @@ public partial class MainWindow
 
                     var baseId = _selectedMannequin.BaseId;
                     var companionOwnerId = _selectedMannequin.CompanionOwnerId;
-                    var position = _selectedMannequin.Position;
 
                     ImGui.Text($"Base ID: {baseId}");
                     ImGui.Text($"Companion Owner ID: {companionOwnerId}");
-                    ImGui.Text($"Position: ({position.X:F2}, {position.Y:F2}, {position.Z:F2})");
 
                     var placeName = ExcelSheetHelper.GetSheet<PlaceName>()!.GetRow(_selectedMannequin.PlaceNameId)!.Name.ExtractText();
-                    ImGui.Text($"{placeName} W{_selectedMannequin.Ward} P{_selectedMannequin.Plot}{(_selectedMannequin.ChamberOrApartmentNumber == 0 ? "" : $" Room {_selectedMannequin.ChamberOrApartmentNumber}")} ({_selectedMannequin.DestinationType})");
+
+                    var playerForTp = _selectedMannequin.PlayerForEstateTPOverride ?? _selectedScenario.DefaultPlayerForEstateTP;
+                    ImGui.Text($"[{playerForTp.Homeworld}] {placeName} W{_selectedMannequin.Ward} P{_selectedMannequin.Plot}{(_selectedMannequin.ChamberOrApartmentNumber == 0 ? "" : $" Room {_selectedMannequin.ChamberOrApartmentNumber}")} ({_selectedMannequin.DestinationType})");
+
+                    ImGui.SameLine();
+
+                    if (NoireService.TargetManager.Target is INpc targetNpc3 && targetNpc3.ObjectKind == ObjectKind.EventNpc)
+                    {
+                        var npcNative = CharacterHelper.GetCharacterAddress(targetNpc3);
+                        var targetBaseId = targetNpc3.BaseId;
+                        var targetCompanionOwnerId = npcNative->CompanionOwnerId;
+
+                        var existingIndex = GetTargetMannequinIndex(targetNpc3);
+
+                        if (existingIndex >= 0)
+                        {
+                            using (ImRaii.Disabled(true))
+                                ImGui.Button("Update with target");
+
+                            if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+                                ImGui.SetTooltip("Target already configured");
+                        }
+                        else
+                        {
+                            if (ImGui.Button($"Update with target"))
+                            {
+                                var updatedMannequin = CommonHelper.MakeMannequin(targetNpc3);
+                                _selectedScenario!.Mannequins[_selectedMannequinIndex] = updatedMannequin;
+                                _selectedMannequin = updatedMannequin;
+                                Configuration.Instance.Save();
+                            }
+                        }
+                    }
+                    else
+                    {
+                        using (ImRaii.Disabled(true))
+                            ImGui.Button("Update with target");
+
+                        if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+                            ImGui.SetTooltip("Target isn't a mannequin");
+                    }
 
                     ImGui.Spacing();
                     ImGui.Separator();
@@ -134,23 +172,7 @@ public partial class MainWindow
                         if (ImGui.Checkbox("Hide Already Assigned Characters", ref hideAssignedChars))
                             Configuration.Instance.HideAlreadyAssignedCharactersInComboBox = hideAssignedChars;
 
-                        List<(ulong cid, string name, string world, long gil, string displayText)> characterList = [];
-
-                        if (Service.AutoRetainerAPI.Ready)
-                        {
-                            var CIDs = Service.RegisteredCharacters;
-                            characterList = CIDs
-                                .Select(cid =>
-                                {
-                                    var data = Service.GetOfflineCharacterData(cid);
-                                    if (data != null)
-                                        return (cid, data.Name, data.World, data.Gil, $"{data.Name}@{data.World} ({data.Gil:N0} gil)");
-
-                                    return ((ulong)0, string.Empty, string.Empty, (long)0, string.Empty);
-                                })
-                                .Where(x => x.Item1 != 0)
-                                .ToList();
-                        }
+                        BuildCharacterList();
 
                         foreach (SlotType slotType in Enum.GetValues<SlotType>())
                         {
@@ -172,17 +194,11 @@ public partial class MainWindow
                                 string currentSelectionText = "None";
                                 if (slot.AssignedCharacter != null && Service.AutoRetainerAPI.Ready)
                                 {
-                                    var match = characterList.FirstOrDefault(x =>
-                                        x.name == slot.AssignedCharacter.PlayerName &&
-                                        x.world == slot.AssignedCharacter.Homeworld);
-                                    if (match != default)
-                                    {
+                                    var key = GetCharacterKey(slot.AssignedCharacter.PlayerName, slot.AssignedCharacter.Homeworld);
+                                    if (characterLookup.TryGetValue(key, out var match))
                                         currentSelectionText = match.displayText;
-                                    }
                                     else
-                                    {
                                         currentSelectionText = $"{slot.AssignedCharacter.PlayerName}@{slot.AssignedCharacter.Homeworld}";
-                                    }
                                 }
 
                                 if (!_slotSearchFilters.ContainsKey(slotType))
@@ -213,13 +229,12 @@ public partial class MainWindow
                                         }
                                     }
 
-                                    foreach (var charInfo in characterList)
+                                    foreach (var (key, charInfo) in characterLookup)
                                     {
                                         if (
                                             !showAllChars &&
                                             (charInfo.gil - _selectedScenario!.GilsToLeaveOnCharacters <= 0 ||
                                             charInfo.gil < _selectedScenario!.MinGilsToConsiderCharacters
-                                            // || (charInfo.name == _selectedScenario!.ReceivingPlayer.PlayerName && charInfo.world == _selectedScenario!.ReceivingPlayer.Homeworld) // Commented out for now
                                             ))
                                         {
                                             continue;
@@ -280,17 +295,10 @@ public partial class MainWindow
 
                                 if (slot.AssignedCharacter != null && Service.AutoRetainerAPI.Ready)
                                 {
-                                    var CIDs = Service.RegisteredCharacters;
-                                    var charData = CIDs
-                                        .Select(cid => Service.GetOfflineCharacterData(cid))
-                                        .FirstOrDefault(cd =>
-                                            cd != null &&
-                                            cd.Name == slot.AssignedCharacter.PlayerName &&
-                                            cd.World == slot.AssignedCharacter.Homeworld);
-
-                                    if (charData != null)
+                                    var key = GetCharacterKey(slot.AssignedCharacter.PlayerName, slot.AssignedCharacter.Homeworld);
+                                    if (characterLookup.TryGetValue(key, out var charInfo))
                                     {
-                                        bool willBeIgnored = charData.Gil < _selectedScenario!.MinGilsToConsiderCharacters || (charData.Gil - _selectedScenario!.GilsToLeaveOnCharacters <= 0);
+                                        bool willBeIgnored = charInfo.gil < _selectedScenario!.MinGilsToConsiderCharacters || (charInfo.gil - _selectedScenario!.GilsToLeaveOnCharacters <= 0);
 
                                         using (ImRaii.PushFont(UiBuilder.IconFont))
                                         {
@@ -301,9 +309,9 @@ public partial class MainWindow
                                         }
 
                                         if (willBeIgnored && ImGui.IsItemHovered())
-                                            ImGui.SetTooltip($"Character will be ignored (has {charData.Gil:N0} gil, minimum is {_selectedScenario!.MinGilsToConsiderCharacters:N0})");
+                                            ImGui.SetTooltip($"Character will be ignored (has {charInfo.gil:N0} gil, minimum is {_selectedScenario!.MinGilsToConsiderCharacters:N0})");
                                         else if (!willBeIgnored && ImGui.IsItemHovered())
-                                            ImGui.SetTooltip($"Character will be processed ({(charData.Gil - _selectedScenario!.GilsToLeaveOnCharacters):N0} gil to transfer)");
+                                            ImGui.SetTooltip($"Character will be processed ({(charInfo.gil - _selectedScenario!.GilsToLeaveOnCharacters):N0} gil to transfer)");
                                     }
                                 }
                             }
@@ -327,16 +335,7 @@ public partial class MainWindow
             var targetBaseId = targetNpc.BaseId;
             var targetCompanionOwnerId = npcNative->CompanionOwnerId;
 
-            int existingIndex = -1;
-            for (int i = 0; i < _selectedScenario!.Mannequins.Count; i++)
-            {
-                var mannequin = _selectedScenario.Mannequins[i];
-                if (mannequin.BaseId == targetBaseId && mannequin.CompanionOwnerId == targetCompanionOwnerId)
-                {
-                    existingIndex = i;
-                    break;
-                }
-            }
+            var existingIndex = GetTargetMannequinIndex(targetNpc);
 
             if (existingIndex >= 0)
             {
@@ -351,31 +350,7 @@ public partial class MainWindow
             {
                 if (ImGui.Button($"Add {targetNpc!.Name}", new Vector2(buttonWidth, 25)))
                 {
-                    var housingManager = HousingManager.Instance();
-                    var ward = housingManager->GetCurrentWard();
-                    var plot = housingManager->GetCurrentPlot() + 1; // Plot is 0 indexed in the struct but 1 indexed for users, so we add 1 here. Also, -1 means we're not on a plot, so it now becomes 0 if not on plot.
-                    var room = housingManager->GetCurrentRoom();
-                    var houseId = housingManager->GetCurrentIndoorHouseId();
-
-                    var territoryType = NoireService.ClientState.TerritoryType;
-                    var placeNameId = ExcelSheetHelper.GetSheet<TerritoryType>()!.GetRow(territoryType)!.PlaceNameZone.Value.RowId;
-
-                    DestinationType destinationType = DestinationType.Unknown;
-
-                    if (room != 0)
-                        destinationType = houseId.IsApartment ? DestinationType.Apartment : DestinationType.FCChamber;
-                    else
-                    {
-                        var foundEntrance = NoireService.ObjectTable.FirstOrDefault(x => CommonHelper.IsAnyWorkshopEntrance(x.BaseId));
-
-                        // Todo: Find a better way, if the FC has no workshop nor rooms, the door MIGHT NOT be interactable and the object might not be set in the object table
-                        if (foundEntrance == null)
-                            destinationType = DestinationType.Private;
-                        else
-                            destinationType = DestinationType.FreeCompany;
-                    }
-
-                    var newMannequin = new Mannequin(null, targetBaseId, targetCompanionOwnerId, targetNpc.Position, destinationType, placeNameId, ward, plot, room);
+                    var newMannequin = CommonHelper.MakeMannequin(targetNpc);
                     _selectedScenario!.Mannequins.Add(newMannequin);
                     Configuration.Instance.Save();
 
@@ -420,5 +395,45 @@ public partial class MainWindow
 
         if (ImGui.Button("Process Characters Buying", new Vector2(buttonWidth, 25)))
             BuyingProcess.ProcessAllCharacterPurchases(_selectedScenario);
+    }
+
+    private static void BuildCharacterList()
+    {
+        ThrottleHelper.Throttle("BuildCharacterList", () =>
+        {
+            if (!Service.AutoRetainerAPI.Ready)
+                return;
+
+            characterLookup.Clear();
+
+            var characterList = new List<(ulong cid, string name, string world, long gil, string displayText)>();
+            foreach (var cid in Service.RegisteredCharacters)
+            {
+                var data = Service.GetOfflineCharacterData(cid);
+                if (data == null)
+                    continue;
+
+                characterList.Add((cid, data.Name, data.World, data.Gil, $"{data.Name}@{data.World} ({data.Gil:N0} gil)"));
+            }
+
+            characterLookup = characterList.ToDictionary(x => GetCharacterKey(x.name, x.world));
+        }, 5000);
+    }
+
+    private static string GetCharacterKey(string name, string world) => $"{name}@{world}";
+
+    private int GetTargetMannequinIndex(INpc targetNpc)
+    {
+        if (_selectedScenario == null)
+            return -1;
+
+        var targetMannequin = CommonHelper.MakeMannequin(targetNpc);
+        for (int i = 0; i < _selectedScenario.Mannequins.Count; i++)
+        {
+            if (_selectedScenario.Mannequins[i].Equals(targetMannequin, true))
+                return i;
+        }
+
+        return -1;
     }
 }

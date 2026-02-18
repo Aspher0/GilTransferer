@@ -1,13 +1,19 @@
 using Dalamud.Game.ClientState.Conditions;
+using Dalamud.Game.ClientState.Objects.Enums;
+using Dalamud.Game.ClientState.Objects.SubKinds;
 using Dalamud.Memory;
 using ECommons.MathHelpers;
+using FFXIVClientStructs.FFXIV.Client.Game;
 using FFXIVClientStructs.FFXIV.Client.System.Framework;
 using FFXIVClientStructs.FFXIV.Client.UI.Agent;
 using GilTransferer.Enums;
 using GilTransferer.Models;
+using Lumina.Excel.Sheets;
 using NoireLib;
+using NoireLib.Helpers;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 
 namespace GilTransferer.Helpers;
@@ -51,7 +57,17 @@ public static class CommonHelper
             ConditionFlag.BetweenAreas,
             ConditionFlag.BetweenAreas51,
             ConditionFlag.Casting,
-            ConditionFlag.Casting87);
+            ConditionFlag.Casting87,
+            ConditionFlag.Occupied,
+            ConditionFlag.Occupied30,
+            ConditionFlag.Occupied33,
+            ConditionFlag.Occupied38,
+            ConditionFlag.Occupied39,
+            ConditionFlag.OccupiedInCutSceneEvent,
+            ConditionFlag.OccupiedInEvent,
+            ConditionFlag.OccupiedInQuestEvent,
+            ConditionFlag.OccupiedSummoningBell
+            );
     }
 
     /// <summary>
@@ -119,7 +135,7 @@ public static class CommonHelper
 
         var characterPosition = localPlayer.Position;
         var characterRotation = localPlayer.Rotation;
-        var characterForward = MathHelper.GetPointFromAngleAndDistance(characterPosition.ToVector2(), characterRotation, 3);
+        var characterForward = ECommons.MathHelpers.MathHelper.GetPointFromAngleAndDistance(characterPosition.ToVector2(), characterRotation, 3);
         Vector3 newPosition = new(characterForward.X, localPlayer.Position.Y, characterForward.Y);
 
         return newPosition;
@@ -209,5 +225,57 @@ public static class CommonHelper
                baseId == (uint)EntranceType.WorkshopEntranceUldah ||
                baseId == (uint)EntranceType.WorkshopEntranceShirogane ||
                baseId == (uint)EntranceType.WorkshopEntranceEmpyreum;
+    }
+
+    public static unsafe INpc? FindMannequinNpc(Mannequin mannequin)
+    {
+        var allNpcs = NoireService.ObjectTable.OfType<INpc>().Where(npc => npc.ObjectKind == ObjectKind.EventNpc);
+        return FindMannequinNpc(mannequin, allNpcs);
+    }
+
+    public static unsafe INpc? FindMannequinNpc(Mannequin mannequin, IEnumerable<INpc> npcs)
+    {
+        var foundNpc = npcs.FirstOrDefault(npc =>
+        {
+            return mannequin.Equals(MakeMannequin(npc));
+        });
+
+        if (foundNpc == null)
+            foundNpc = npcs.FirstOrDefault(npc => mannequin.Equals(MakeMannequin(npc), true));
+
+        return foundNpc;
+    }
+
+    public static unsafe Mannequin MakeMannequin(INpc mannequin)
+    {
+        var npcNative = CharacterHelper.GetCharacterAddress(mannequin);
+        var targetBaseId = mannequin.BaseId;
+        var targetCompanionOwnerId = npcNative->CompanionOwnerId;
+
+        var housingManager = HousingManager.Instance();
+        var ward = housingManager->GetCurrentWard() + 1;
+        var plot = housingManager->GetCurrentPlot() + 1; // Plot is 0 indexed in the struct but 1 indexed for users, so we add 1 here. Also, -1 means we're not on a plot, so it now becomes 0 if not on plot.
+        var room = housingManager->GetCurrentRoom();
+        var houseId = housingManager->GetCurrentIndoorHouseId();
+
+        var territoryType = NoireService.ClientState.TerritoryType;
+        var placeNameId = ExcelSheetHelper.GetSheet<TerritoryType>()!.GetRow(territoryType)!.PlaceNameZone.Value.RowId;
+
+        DestinationType destinationType = DestinationType.Unknown;
+
+        if (room != 0)
+            destinationType = houseId.IsApartment ? DestinationType.Apartment : DestinationType.FCChamber;
+        else
+        {
+            var foundEntrance = NoireService.ObjectTable.FirstOrDefault(x => CommonHelper.IsAnyWorkshopEntrance(x.BaseId));
+
+            // Todo: Find a better way, if the FC has no workshop nor rooms, the door MIGHT NOT be interactable and the object might not be set in the object table
+            if (foundEntrance == null)
+                destinationType = DestinationType.Private;
+            else
+                destinationType = DestinationType.FreeCompany;
+        }
+
+        return new Mannequin(null, targetBaseId, targetCompanionOwnerId, mannequin.Position, destinationType, placeNameId, ward, plot, room);
     }
 }

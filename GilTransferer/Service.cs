@@ -20,25 +20,25 @@ public static class Service
     public static LifestreamIPC LifestreamIPC { get; set; } = new();
     public static TextAdvanceIPC TextAdvanceIPC { get; set; } = new();
 
-    private static List<ulong> _cachedRegisteredCharacters = new();
+    private static List<ulong> CachedRegisteredCharacters = new();
     public static List<ulong> RegisteredCharacters
     {
         get
         {
             var result = ThrottleHelper.Throttle("RegisteredCharacters", () => AutoRetainerAPI.GetRegisteredCharacters(), intervalMilliseconds: 500);
             if (!result.IsDefault())
-                _cachedRegisteredCharacters = result!;
-            return _cachedRegisteredCharacters;
+                CachedRegisteredCharacters = result!;
+            return CachedRegisteredCharacters;
         }
     }
 
-    private static Dictionary<ulong, OfflineCharacterData> _cachedOfflineCharacterData = new();
+    private static Dictionary<ulong, OfflineCharacterData> CachedOfflineCharacterData = new();
     public static OfflineCharacterData? GetOfflineCharacterData(ulong cid)
     {
         var result = ThrottleHelper.Throttle($"OfflineCharacterData_{cid}", () => AutoRetainerAPI.GetOfflineCharacterData(cid), intervalMilliseconds: 500);
         if (!result.IsDefault())
-            _cachedOfflineCharacterData[cid] = result!;
-        return _cachedOfflineCharacterData.TryGetValue(cid, out var data) ? data : null;
+            CachedOfflineCharacterData[cid] = result!;
+        return CachedOfflineCharacterData.TryGetValue(cid, out var data) ? data : null;
     }
     public static OfflineCharacterData? FindARPlayerFromPlayerModel(PlayerModel playerToFind)
     {
