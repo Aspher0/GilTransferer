@@ -20,34 +20,38 @@ public static class Service
     public static LifestreamIPC LifestreamIPC { get; set; } = new();
     public static TextAdvanceIPC TextAdvanceIPC { get; set; } = new();
 
-    private static List<ulong> CachedRegisteredCharacters = new();
-    public static List<ulong> RegisteredCharacters
+    private static Dictionary<ulong, OfflineCharacterData> CachedOfflineCharacterData = new();
+    public static Dictionary<ulong, OfflineCharacterData> OfflineCharacterData
     {
         get
         {
-            var result = ThrottleHelper.Throttle("RegisteredCharacters", () => AutoRetainerAPI.GetRegisteredCharacters(), intervalMilliseconds: 500);
-            if (!result.IsDefault())
-                CachedRegisteredCharacters = result!;
-            return CachedRegisteredCharacters;
+            if (ThrottleHelper.IsAvailable("RegisteredCharacters"))
+            {
+                var result = ThrottleHelper.Throttle("RegisteredCharacters", 500.Milliseconds(), () => AutoRetainerAPI.GetRegisteredCharacters(), null);
+                if (result != null)
+                    foreach (var cid in result)
+                        GetOfflineCharacterData(cid);
+            }
+            return CachedOfflineCharacterData;
         }
     }
 
-    private static Dictionary<ulong, OfflineCharacterData> CachedOfflineCharacterData = new();
     public static OfflineCharacterData? GetOfflineCharacterData(ulong cid)
     {
-        var result = ThrottleHelper.Throttle($"OfflineCharacterData_{cid}", () => AutoRetainerAPI.GetOfflineCharacterData(cid), intervalMilliseconds: 500);
+        var result = ThrottleHelper.Throttle($"OfflineCharacterData_{cid}", 500.Milliseconds(), () => AutoRetainerAPI.GetOfflineCharacterData(cid));
         if (!result.IsDefault())
             CachedOfflineCharacterData[cid] = result!;
         return CachedOfflineCharacterData.TryGetValue(cid, out var data) ? data : null;
     }
+
     public static OfflineCharacterData? FindARPlayerFromPlayerModel(PlayerModel playerToFind)
     {
-        foreach (var cid in RegisteredCharacters)
+        foreach (var cid in OfflineCharacterData)
         {
-            var data = GetOfflineCharacterData(cid);
+            var data = GetOfflineCharacterData(cid.Key);
             if (data != null &&
                 data.Name == playerToFind.PlayerName &&
-                data.World == playerToFind.Homeworld)
+                data.World == playerToFind.HomeWorld)
                 return data;
         }
         return null;
@@ -55,8 +59,8 @@ public static class Service
 
     public static void Initialize()
     {
-        EventBus = NoireLibMain.AddModule(new NoireEventBus("EventBus"))!;
-        TaskQueue = NoireLibMain.AddModule(new NoireTaskQueue("TaskQueueDebug", eventBus: EventBus))!;
+        EventBus = NoireLibMain.AddModule(new NoireEventBus("EventBus"));
+        TaskQueue = NoireLibMain.AddModule(new NoireTaskQueue("TaskQueueDebug", eventBus: EventBus));
     }
 
     public static void StopQueue()

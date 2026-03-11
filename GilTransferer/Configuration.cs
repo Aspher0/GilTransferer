@@ -16,14 +16,12 @@ public class Configuration : NoireConfigBase<Configuration>
     /// <summary>
     /// A list of scenarios configured by the user.
     /// </summary>
-    [AutoSave]
-    public virtual List<Scenario> Scenarios { get; set; } = new();
+    public List<Scenario> Scenarios { get; set; } = new();
 
     /// <summary>
     /// The mapping of slot types to the item assigned to it.
     /// </summary>
-    [AutoSave]
-    public virtual Dictionary<SlotType, uint> ItemsPerSlot { get; set; } = new();
+    public Dictionary<SlotType, uint> ItemsPerSlot { get; set; } = new();
 
     /// <summary>
     /// A flag indicating whether to show all characters in the combo box, regardless of their gil amount.

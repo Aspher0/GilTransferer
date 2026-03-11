@@ -38,7 +38,7 @@ public static class CommonHelper
                 var slot = mannequinSlot;
                 if (slot.AssignedCharacter != null &&
                     slot.AssignedCharacter.PlayerName == characterName &&
-                    slot.AssignedCharacter.Homeworld == characterWorld)
+                    slot.AssignedCharacter.HomeWorld == characterWorld)
                 {
                     assignmentInfo = $"Mannequin #{i + 1}, {slotType}";
                     return true;
@@ -119,6 +119,9 @@ public static class CommonHelper
     /// </summary>
     public static void MoveForward()
     {
+        var localPlayer = NoireService.ObjectTable.LocalPlayer;
+        if (localPlayer == null)
+            return;
         var newPosition = GetMoveForwardVector();
         Service.LifestreamIPC.Move([newPosition]);
     }

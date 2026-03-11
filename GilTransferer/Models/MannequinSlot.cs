@@ -1,7 +1,7 @@
 using GilTransferer.Enums;
+using Newtonsoft.Json;
 using NoireLib.Models;
 using System;
-using System.Text.Json.Serialization;
 
 namespace GilTransferer.Models;
 

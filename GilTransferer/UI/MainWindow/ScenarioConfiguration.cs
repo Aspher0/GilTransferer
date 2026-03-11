@@ -56,7 +56,7 @@ public partial class MainWindow
             if (ImGui.Button("Skip Current Character"))
                 BuyingProcess.SkipCurrentCharacterPurchase();
 
-            ImGui.TextUnformatted($"(Processing {Math.Floor(Service.TaskQueue.GetQueueProgress() * 100)}%)");
+            ImGui.TextUnformatted($"(Processing {Math.Floor(Service.TaskQueue.GetQueueProgressPercentage())}%)");
         }
 
         ImGui.SameLine();
@@ -65,7 +65,6 @@ public partial class MainWindow
         ImGui.Separator();
         ImGui.Spacing();
 
-        // Tab bar
         using (ImRaii.TabBar("##ScenarioConfigTabs"))
         {
             using (var configTab = ImRaii.TabItem("Config"))
@@ -115,7 +114,7 @@ public partial class MainWindow
             ImGui.Spacing();
 
             var estateTPPlayerName = _selectedScenario!.DefaultPlayerForEstateTP.PlayerName ?? string.Empty;
-            var estateTPHomeworld = _selectedScenario!.DefaultPlayerForEstateTP.Homeworld ?? string.Empty;
+            var estateTPHomeworld = _selectedScenario!.DefaultPlayerForEstateTP.HomeWorld ?? string.Empty;
 
             ImGui.TextUnformatted("Default Player for Estate Teleport:");
 
@@ -127,7 +126,7 @@ public partial class MainWindow
                 // Reset CID since we manually changed the name,
                 var arPlayer = Service.FindARPlayerFromPlayerModel(new PlayerModel(estateTPPlayerName, estateTPHomeworld));
                 _selectedScenario!.DefaultPlayerForEstateTP.ContentId = arPlayer?.CID;
-                _selectedScenario!.DefaultPlayerForEstateTP.WorldId = null;
+                _selectedScenario!.DefaultPlayerForEstateTP.HomeWorldId = null;
 
                 Configuration.Instance.Save();
             }
@@ -139,12 +138,12 @@ public partial class MainWindow
             ImGui.SetNextItemWidth(150);
             if (ImGui.InputTextWithHint("##EstateTPWorld", "World", ref estateTPHomeworld, 32))
             {
-                _selectedScenario.DefaultPlayerForEstateTP.Homeworld = estateTPHomeworld;
+                _selectedScenario.DefaultPlayerForEstateTP.HomeWorld = estateTPHomeworld;
 
                 // Reset CID since we manually changed the name,
                 var arPlayer = Service.FindARPlayerFromPlayerModel(new PlayerModel(estateTPPlayerName, estateTPHomeworld));
                 _selectedScenario!.DefaultPlayerForEstateTP.ContentId = arPlayer?.CID;
-                _selectedScenario!.DefaultPlayerForEstateTP.WorldId = null;
+                _selectedScenario!.DefaultPlayerForEstateTP.HomeWorldId = null;
 
                 Configuration.Instance.Save();
             }
@@ -198,7 +197,7 @@ public partial class MainWindow
             }
 
             var gilsToLeaveOnCharacters = _selectedScenario!.GilsToLeaveOnCharacters;
-            ImGui.TextUnformatted($"At the very least, this amount of gils will be left on each characters:");
+            ImGui.TextUnformatted($"Approximately this amount of gils will be left on each characters:");
             ImGui.SetNextItemWidth(200);
             if (ImGui.InputInt("##GilsToLeaveOnCharacters", ref gilsToLeaveOnCharacters))
             {

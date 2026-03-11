@@ -94,7 +94,7 @@ public sealed class Plugin : IDalamudPlugin
                                 }
                             default:
                                 {
-                                    // Sometimes it doesnt fucking work, no idea why, it just returns 0, fuck you GameGui
+                                    // Sometimes it doesnt work, no idea why, it just returns 0
                                     var guiHoveredItem = NoireService.GameGui.HoveredItem;
                                     var itemId = ItemUtil.GetBaseId((uint)guiHoveredItem).ItemId;
                                     baseItemId = ItemUtil.GetBaseId(itemId).ItemId;

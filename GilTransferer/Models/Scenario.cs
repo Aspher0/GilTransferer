@@ -1,8 +1,7 @@
-using NoireLib.Helpers;
+using Newtonsoft.Json;
 using NoireLib.Models;
 using System;
 using System.Collections.Generic;
-using System.Text.Json.Serialization;
 
 namespace GilTransferer.Models;
 
@@ -12,7 +11,7 @@ namespace GilTransferer.Models;
 [Serializable]
 public class Scenario
 {
-    public string UniqueID { get; private set; } = RandomGenerator.GenerateGuidString();
+    public Guid UniqueID { get; private set; } = Guid.NewGuid();
 
     /// <summary>
     /// The name of this scenario.
@@ -44,10 +43,8 @@ public class Scenario
     /// </summary>
     public List<Mannequin> Mannequins { get; set; } = new();
 
-
-
     [JsonConstructor]
-    public Scenario(string uniqueId, string scenarioName, PlayerModel defaultPlayerForEstateTP)
+    public Scenario(Guid uniqueId, string scenarioName, PlayerModel defaultPlayerForEstateTP)
     {
         UniqueID = uniqueId;
         ScenarioName = scenarioName;

@@ -9,6 +9,7 @@ using GilTransferer.Models;
 using Lumina.Excel.Sheets;
 using NoireLib;
 using NoireLib.Helpers;
+using NoireLib.Helpers.ObjectExtensions;
 using NoireLib.Models;
 using System;
 using System.Collections.Generic;
@@ -107,7 +108,7 @@ public partial class MainWindow
                     var placeName = ExcelSheetHelper.GetSheet<PlaceName>()!.GetRow(_selectedMannequin.PlaceNameId)!.Name.ExtractText();
 
                     var playerForTp = _selectedMannequin.PlayerForEstateTPOverride ?? _selectedScenario.DefaultPlayerForEstateTP;
-                    ImGui.Text($"[{playerForTp.Homeworld}] {placeName} W{_selectedMannequin.Ward} P{_selectedMannequin.Plot}{(_selectedMannequin.ChamberOrApartmentNumber == 0 ? "" : $" Room {_selectedMannequin.ChamberOrApartmentNumber}")} ({_selectedMannequin.DestinationType})");
+                    ImGui.Text($"[{playerForTp.HomeWorld}] {placeName} W{_selectedMannequin.Ward} P{_selectedMannequin.Plot}{(_selectedMannequin.ChamberOrApartmentNumber == 0 ? "" : $" Room {_selectedMannequin.ChamberOrApartmentNumber}")} ({_selectedMannequin.DestinationType})");
 
                     ImGui.SameLine();
 
@@ -151,9 +152,9 @@ public partial class MainWindow
                     ImGui.Separator();
                     ImGui.Spacing();
 
-                    if (ImGui.Button("Setup this Mannequin"))
+                    if (ImGui.Button("Setup this Mannequin") && _selectedMannequin != null)
                     {
-                        SellingProcess.ProcessMannequin(_selectedMannequin, _selectedScenario, true);
+                        SellingProcess.SetupAllMannequins([_selectedMannequin], _selectedScenario);
                     }
 
                     availableYSpace = ImGui.GetContentRegionAvail().Y;
@@ -194,11 +195,11 @@ public partial class MainWindow
                                 string currentSelectionText = "None";
                                 if (slot.AssignedCharacter != null && Service.AutoRetainerAPI.Ready)
                                 {
-                                    var key = GetCharacterKey(slot.AssignedCharacter.PlayerName, slot.AssignedCharacter.Homeworld);
+                                    var key = GetCharacterKey(slot.AssignedCharacter.PlayerName, slot.AssignedCharacter.HomeWorld);
                                     if (characterLookup.TryGetValue(key, out var match))
                                         currentSelectionText = match.displayText;
                                     else
-                                        currentSelectionText = $"{slot.AssignedCharacter.PlayerName}@{slot.AssignedCharacter.Homeworld}";
+                                        currentSelectionText = $"{slot.AssignedCharacter.PlayerName}@{slot.AssignedCharacter.HomeWorld}";
                                 }
 
                                 if (!_slotSearchFilters.ContainsKey(slotType))
@@ -248,7 +249,7 @@ public partial class MainWindow
 
                                         bool isSelected = slot.AssignedCharacter != null &&
                                         slot.AssignedCharacter.PlayerName == charInfo.name &&
-                                        slot.AssignedCharacter.Homeworld == charInfo.world;
+                                        slot.AssignedCharacter.HomeWorld == charInfo.world;
 
                                         bool isAssignedElsewhere = CommonHelper.IsCharacterAssignedAnywhere(_selectedScenario, charInfo.name, charInfo.world, out string assignmentInfo);
 
@@ -295,7 +296,7 @@ public partial class MainWindow
 
                                 if (slot.AssignedCharacter != null && Service.AutoRetainerAPI.Ready)
                                 {
-                                    var key = GetCharacterKey(slot.AssignedCharacter.PlayerName, slot.AssignedCharacter.Homeworld);
+                                    var key = GetCharacterKey(slot.AssignedCharacter.PlayerName, slot.AssignedCharacter.HomeWorld);
                                     if (characterLookup.TryGetValue(key, out var charInfo))
                                     {
                                         bool willBeIgnored = charInfo.gil < _selectedScenario!.MinGilsToConsiderCharacters || (charInfo.gil - _selectedScenario!.GilsToLeaveOnCharacters <= 0);
@@ -389,7 +390,7 @@ public partial class MainWindow
         ImGui.SameLine();
 
         if (ImGui.Button("Setup All Mannequins", new Vector2(buttonWidth, 25)))
-            SellingProcess.SetupAllMannequins(_selectedScenario);
+            SellingProcess.SetupAllMannequins(_selectedScenario.Mannequins, _selectedScenario);
 
         ImGui.SameLine();
 
@@ -399,7 +400,7 @@ public partial class MainWindow
 
     private static void BuildCharacterList()
     {
-        ThrottleHelper.Throttle("BuildCharacterList", () =>
+        ThrottleHelper.Throttle("BuildCharacterList", 500.Milliseconds(), () =>
         {
             if (!Service.AutoRetainerAPI.Ready)
                 return;
@@ -407,17 +408,12 @@ public partial class MainWindow
             characterLookup.Clear();
 
             var characterList = new List<(ulong cid, string name, string world, long gil, string displayText)>();
-            foreach (var cid in Service.RegisteredCharacters)
-            {
-                var data = Service.GetOfflineCharacterData(cid);
-                if (data == null)
-                    continue;
-
-                characterList.Add((cid, data.Name, data.World, data.Gil, $"{data.Name}@{data.World} ({data.Gil:N0} gil)"));
-            }
+            foreach (var characterData in Service.OfflineCharacterData)
+                characterList.Add((characterData.Key, characterData.Value.Name, characterData.Value.World, characterData.Value.Gil,
+                    $"{characterData.Value.Name}@{characterData.Value.World} ({characterData.Value.Gil:N0} gil)"));
 
             characterLookup = characterList.ToDictionary(x => GetCharacterKey(x.name, x.world));
-        }, 5000);
+        });
     }
 
     private static string GetCharacterKey(string name, string world) => $"{name}@{world}";

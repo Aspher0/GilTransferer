@@ -14,6 +14,7 @@ using NoireLib.Helpers.ObjectExtensions;
 using NoireLib.TaskQueue;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using Callback = ECommons.Automation.Callback;
 
@@ -21,24 +22,50 @@ namespace GilTransferer.Helpers;
 
 public static class SellingProcess
 {
-    public static void SetupAllMannequins(Scenario? scenario)
+    public static void SetupAllMannequins(IEnumerable<Mannequin> mannequins, Scenario scenario)
     {
-        if (scenario == null || Service.LifestreamIPC.IsBusy())
+        if (mannequins == null || Service.LifestreamIPC.IsBusy())
             return;
 
-        foreach (var mannequin in scenario.Mannequins)
+        if (NoireService.ObjectTable.LocalPlayer == null)
         {
-            NoireLogger.LogDebug($"Processing mannequin for BaseId {mannequin.BaseId}");
-            ProcessMannequin(mannequin, scenario);
+            NoireLogger.LogDebug("Local player is null, cannot proceed with mannequin setup.");
+            return;
         }
+
+        Service.TaskQueue.CreateTask("Enabling TextAdvance")
+            .WithAction(task =>
+            {
+                if (!Service.TextAdvanceIPC.EnableExternalControl())
+                {
+                    NoireLogger.PrintToChat(XivChatType.Echo, "Could not enable TextAdvance.", ColorHelper.HexToVector3("#FF1111"));
+                    throw new InvalidOperationException("Could not enable TextAdvance.");
+                }
+            })
+            .OnFailedOrCancelled((task, ex) =>
+            {
+                Service.StopQueue();
+            })
+            .Enqueue();
+
+        var mannequinsList = mannequins.ToList();
+
+        foreach (var mannequin in mannequins)
+            ProcessMannequin(mannequin, scenario);
+
+        Service.TaskQueue.CreateTask("Disable TextAdvance")
+            .WithAction(() => Service.TextAdvanceIPC.DisableExternalControl())
+            .Enqueue();
 
         Service.TaskQueue.StartQueue();
     }
 
-    public static unsafe void ProcessMannequin(Mannequin? mannequin, Scenario selectedScenario, bool startQueue = false)
+    private static void ProcessMannequin(Mannequin mannequin, Scenario selectedScenario)
     {
         if (mannequin == null)
             return;
+
+        NoireLogger.LogDebug($"Processing mannequin for BaseId {mannequin.BaseId}");
 
         var baseId = mannequin.BaseId;
         var companionOwnerId = mannequin.CompanionOwnerId;
@@ -53,83 +80,63 @@ public static class SellingProcess
 
         NoireLogger.LogDebug($"Found mannequin NPC for BaseId {baseId}: Name={foundNpc.Name}");
 
-        TaskBuilder.Create("Enabling TextAdvance")
-            .WithAction(task =>
+        Service.TaskQueue.CreateBatch($"Setting up mannequin {baseId}@{companionOwnerId}")
+            .AddTasks(configurator =>
             {
-                if (!Service.TextAdvanceIPC.EnableExternalControl(new()))
+                MoveToUntilInReach(configurator, foundNpc, mannequin);
+                InteractWithTarget(configurator, foundNpc, mannequin);
+                OpenMannequinMerchantSetting(configurator, mannequin);
+
+                foreach (var (slotType, mannequinSlot) in mannequin.Slots)
                 {
-                    NoireLogger.PrintToChat(XivChatType.Echo, "Could not enable TextAdvance.", ColorHelper.HexToVector3("#FF1111"));
-                    throw new InvalidOperationException("Could not enable TextAdvance.");
+                    if (mannequinSlot.AssignedCharacter == null)
+                        continue;
+                    EnsureSlotEmpty(configurator, slotType, mannequinSlot, selectedScenario, mannequin);
+                    SetSlotOnMannequin(configurator, slotType, mannequinSlot, selectedScenario, mannequin);
                 }
+
+                CloseMannequinMerchantSetting(configurator, mannequin);
             })
-            .OnFailedOrCancelled((task, ex) =>
-            {
-                Service.StopQueue();
-            })
-            .EnqueueTo(Service.TaskQueue);
-
-        if (NoireService.ObjectTable.LocalPlayer == null)
-        {
-            NoireLogger.LogDebug("Local player is null, cannot proceed with mannequin setup.");
-            return;
-        }
-
-        MoveToUntilInReach(foundNpc);
-        InteractWithTarget();
-        OpenMannequinMerchantSetting();
-
-        foreach (var (slotType, mannequinSlot) in mannequin.Slots)
-        {
-            if (mannequinSlot.AssignedCharacter == null)
-                continue;
-            EnsureSlotEmpty(slotType, mannequinSlot, selectedScenario);
-            SetSlotOnMannequin(slotType, mannequinSlot, selectedScenario);
-        }
-
-        CloseMannequinMerchantSetting();
-
-        TaskBuilder.AddAction(() => Service.TextAdvanceIPC.DisableExternalControl(), Service.TaskQueue, "Disable TextAdvance");
-
-        if (startQueue)
-            Service.TaskQueue.StartQueue();
+            .Enqueue();
     }
 
-    public static void MoveToUntilInReach(ICharacter character)
+    private static void MoveToUntilInReach(BatchTaskConfigurator configurator, ICharacter character, Mannequin mannequin)
     {
-        TaskBuilder.Create("Waiting to be available")
+        configurator.Create($"Waiting to be available for mannequin {mannequin.UniqueId}")
             .WithCondition(task => !CommonHelper.IsOccupied())
-            .EnqueueTo(Service.TaskQueue);
+            .Enqueue();
 
-        TaskBuilder.Create("Target and move to Mannequin")
+        configurator.Create("Target and move to Mannequin")
             .WithAction(task =>
             {
-                NoireService.TargetManager.SetTarget(character);
-
                 if (NoireService.ObjectTable.LocalPlayer == null)
                     return;
 
                 if (Vector3.Distance(character.Position, NoireService.ObjectTable.LocalPlayer.Position) > 3.5f)
                     Service.LifestreamIPC.Move([character.Position]);
             })
-            .WithCondition(task =>
-            {
-                if (NoireService.ObjectTable.LocalPlayer == null)
-                    return false;
-
-                if (Vector3.Distance(NoireService.ObjectTable.LocalPlayer.Position, character.Position) < 3.5f)
-                {
-                    Service.LifestreamIPC.Move([]);
-                    return true;
-                }
-
-                return false;
-            })
-            .EnqueueTo(Service.TaskQueue);
+            .WithCondition(() => IsWithinReach(character))
+            .Enqueue();
     }
 
-    public static unsafe void InteractWithTarget()
+    private static bool IsWithinReach(ICharacter character)
     {
-        TaskBuilder.Create("Interact with Target")
+        if (NoireService.ObjectTable.LocalPlayer == null)
+            return false;
+
+        if (Vector3.Distance(NoireService.ObjectTable.LocalPlayer.Position, character.Position) < 3.5f)
+        {
+            Service.LifestreamIPC.Move([]);
+            return true;
+        }
+
+        return false;
+    }
+
+    private static unsafe void InteractWithTarget(BatchTaskConfigurator configurator, ICharacter mannequinCharacter, Mannequin mannequin)
+    {
+        configurator.Create($"Interact with Target for mannequin {mannequin.UniqueId}")
+            .WithAction(() => NoireService.TargetManager.SetTarget(mannequinCharacter))
             .WithCondition(task =>
             {
                 var target = NoireService.TargetManager.Target;
@@ -143,13 +150,13 @@ public static class SellingProcess
                 TargetSystem.Instance()->InteractWithObject(target.Struct(), false);
                 return true;
             })
-            .WithRetries(3, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5))
-            .EnqueueTo(Service.TaskQueue);
+            .WithRetries(3, 2.Seconds())
+            .Enqueue();
     }
 
-    public static unsafe void OpenMannequinMerchantSetting()
+    private static unsafe void OpenMannequinMerchantSetting(BatchTaskConfigurator configurator, Mannequin mannequin)
     {
-        TaskBuilder.Create("Open Mannequin Merchant Setting")
+        configurator.Create($"Open Mannequin Merchant Setting for mannequin {mannequin.UniqueId}")
             .WithCondition(task =>
             {
                 if (!AddonHelper.TryGetReadyAddon("SelectString", out var addon))
@@ -158,10 +165,10 @@ public static class SellingProcess
                 Callback.Fire(addon, true, 0); // Click "Select gear to sell."
                 return true;
             })
-            .EnqueueTo(Service.TaskQueue);
+            .Enqueue();
     }
 
-    private static unsafe void EnsureSlotEmpty(SlotType slotType, MannequinSlot mannequinSlot, Scenario selectedScenario)
+    private static unsafe void EnsureSlotEmpty(BatchTaskConfigurator configurator, SlotType slotType, MannequinSlot mannequinSlot, Scenario selectedScenario, Mannequin mannequin)
     {
         var finalPriceOfSlot = CommonHelper.GetFinalPriceOfSlot(slotType, mannequinSlot, selectedScenario);
         if (finalPriceOfSlot == null)
@@ -177,7 +184,7 @@ public static class SellingProcess
 
         // Should wait merchant setting actually interactable
 
-        TaskBuilder.Create("Wait for MerchantSetting Ready")
+        configurator.Create($"Wait for MerchantSetting Ready for mannequin {mannequin.UniqueId}")
             .WithCondition(task =>
             {
                 if (!AddonHelper.TryGetReadyAddon("MerchantSetting", out var addon))
@@ -186,9 +193,10 @@ public static class SellingProcess
                 Callback.Fire(addon, true, 13, slotNumber); // Right click on slot (if empty, will do nothing, if not empty will open context menu to remove item)
                 return true;
             })
-            .EnqueueTo(Service.TaskQueue);
+            .WithDelay(500.Milliseconds())
+            .Enqueue();
 
-        TaskBuilder.Create($"Try to open context menu for slot {slotNumber} for {mannequinSlot.AssignedCharacter!.UniqueId}")
+        configurator.Create($"Try to get context menu for slot {slotNumber} for mannequin {mannequin.UniqueId}")
             .WithCondition(task =>
             {
                 if (AddonHelper.TryGetReadyAddon("ContextMenu", out var contextMenuAddon))
@@ -201,12 +209,12 @@ public static class SellingProcess
                 return false;
             })
             .WithTimeout(500.Milliseconds())
-            .EnqueueTo(Service.TaskQueue);
+            .Enqueue();
 
-        TaskBuilder.Create($"Remove item from slot {slotNumber}")
+        configurator.Create($"Remove item from slot {slotNumber} for mannequin {mannequin.UniqueId}")
             .WithCondition(task =>
             {
-                var previousTaskMetadata = TaskBuilder.GetMetadataFromTask<object?>(Service.TaskQueue, $"Try to open context menu for slot {slotNumber} for {mannequinSlot.AssignedCharacter!.UniqueId}");
+                var previousTaskMetadata = TaskBuilder.GetMetadataFromTask<object?>(Service.TaskQueue, $"Try to get context menu for slot {slotNumber} for mannequin {mannequin.UniqueId}");
 
                 if (previousTaskMetadata == null)
                     return true;
@@ -214,18 +222,21 @@ public static class SellingProcess
                 if (!AddonHelper.TryGetReadyAddon("ContextMenu", out var addon))
                     return false;
 
-                Callback.Fire(addon, true, 0, 0, 0); // Click on "Return to Inventory" in context menu
+                Callback.Fire(addon, true, 0, 0, 0); // Click on "Return to Inventory" / "Remove sold out item" in context menu
                 return true;
             })
-            .EnqueueTo(Service.TaskQueue);
+            .Enqueue();
 
-        TaskBuilder.Create($"Select yes")
+        configurator.Create($"Select yes for slot {slotNumber} for mannequin {mannequin.UniqueId}")
             .WithCondition(task =>
             {
-                var previousTaskMetadata = TaskBuilder.GetMetadataFromTask<object?>(Service.TaskQueue, $"Try to open context menu for slot {slotNumber} for {mannequinSlot.AssignedCharacter!.UniqueId}");
+                var previousTaskMetadata = TaskBuilder.GetMetadataFromTask<object?>(Service.TaskQueue, $"Try to get context menu for slot {slotNumber} for mannequin {mannequin.UniqueId}");
 
                 if (previousTaskMetadata == null)
                     return true;
+
+                // If "Return to Inventory", SelectYesno will appear
+                // If "Remove sold out item", no confirmation will appear, item will be removed immediately, we just timeout after 500 ms
 
                 if (!AddonHelper.TryGetReadyAddon("SelectYesno", out var addon))
                     return false;
@@ -235,12 +246,13 @@ public static class SellingProcess
                 Callback.Fire(addon, true, 0); // Click on "Yes" in SelectYesno
                 return true;
             })
-            .EnqueueTo(Service.TaskQueue);
+            .WithTimeout(500.Milliseconds())
+            .Enqueue();
 
-        TaskBuilder.Create($"Confirm removal for slot {slotNumber}")
+        configurator.Create($"Confirm removal for slot {slotNumber} for mannequin {mannequin.UniqueId}")
             .WithCondition(task =>
             {
-                task.Metadata = TaskBuilder.GetMetadataFromTask<object?>(Service.TaskQueue, $"Try to open context menu for slot {slotNumber} for {mannequinSlot.AssignedCharacter!.UniqueId}");
+                task.Metadata = TaskBuilder.GetMetadataFromTask<object?>(Service.TaskQueue, $"Try to get context menu for slot {slotNumber} for mannequin {mannequin.UniqueId}");
 
                 if (task.Metadata == null)
                     return true;
@@ -251,14 +263,14 @@ public static class SellingProcess
                 return true;
             })
             .WithDelay(task => task.Metadata == null ? 0.Milliseconds() : 500.Milliseconds())
-            .EnqueueTo(Service.TaskQueue);
+            .Enqueue();
     }
 
-    private static unsafe void SetSlotOnMannequin(SlotType slotType, MannequinSlot mannequinSlot, Scenario selectedScenario)
+    private static unsafe void SetSlotOnMannequin(BatchTaskConfigurator configurator, SlotType slotType, MannequinSlot mannequinSlot, Scenario selectedScenario, Mannequin mannequin)
     {
         if (!Configuration.Instance.ItemsPerSlot.ContainsKey(slotType))
         {
-            var message = $"Skipping slot {slotType} because there is no configured item to sell. Please add an item for this slot in the configuration.";
+            var message = $"Skipping slot {slotType} for mannequin {mannequin.UniqueId} because there is no configured item to sell. Please add an item for this slot in the configuration.";
             NoireLogger.PrintToChat(message);
             NoireLogger.LogDebug(message);
             return;
@@ -267,7 +279,7 @@ public static class SellingProcess
         var finalPriceOfSlot = CommonHelper.GetFinalPriceOfSlot(slotType, mannequinSlot, selectedScenario);
         if (finalPriceOfSlot == null)
         {
-            NoireLogger.LogDebug($"Skipping slot {slotType}, target char has not enough gils.");
+            NoireLogger.LogDebug($"Skipping slot {slotType} for mannequin {mannequin.UniqueId}, target char has not enough gils.");
             return;
         }
 
@@ -275,7 +287,7 @@ public static class SellingProcess
 
         // Should wait merchant setting actually interactable
 
-        TaskBuilder.Create("Open Select Item Menu")
+        configurator.Create($"Open Select Item Menu for slot {slotType} for mannequin {mannequin.UniqueId}")
             .WithCondition(task =>
             {
                 if (!AddonHelper.TryGetReadyAddon("MerchantSetting", out var addon))
@@ -284,9 +296,9 @@ public static class SellingProcess
                 Callback.Fire(addon, true, 12, slotNumber);
                 return true;
             })
-            .EnqueueTo(Service.TaskQueue);
+            .Enqueue();
 
-        TaskBuilder.Create($"Find Right Item For {mannequinSlot.AssignedCharacter?.UniqueId ?? "Unknown"}")
+        configurator.Create($"Find Right Item For for slot {slotType} for mannequin {mannequin.UniqueId}")
             .WithCondition(task =>
             {
                 if (!AddonHelper.TryGetReadyAddon("MerchantEquipSelect", out var addon))
@@ -329,15 +341,15 @@ public static class SellingProcess
 
                 return false;
             })
-            .EnqueueTo(Service.TaskQueue);
+            .Enqueue();
 
-        TaskBuilder.Create("Select Item In List To Equip Slot")
+        configurator.Create($"Select Item In List To Equip for slot {slotType} for mannequin {mannequin.UniqueId}")
             .WithCondition(task =>
             {
                 if (!AddonHelper.TryGetReadyAddon("MerchantEquipSelect", out var addon))
                     return false;
 
-                var previousMetadata = TaskBuilder.GetMetadataFromTask<object?>(Service.TaskQueue, $"Find Right Item For {mannequinSlot.AssignedCharacter?.UniqueId ?? "Unknown"}");
+                var previousMetadata = TaskBuilder.GetMetadataFromTask<object?>(Service.TaskQueue, $"Find Right Item For for slot {slotType} for mannequin {mannequin.UniqueId}");
                 if (previousMetadata == null || previousMetadata is not int nodeIndex)
                     return false;
 
@@ -345,9 +357,9 @@ public static class SellingProcess
                 Callback.Fire(addon, true, 19, nodeIndex);
                 return true;
             })
-            .EnqueueTo(Service.TaskQueue);
+            .Enqueue();
 
-        TaskBuilder.Create("Get RetainerSell Addon")
+        configurator.Create($"Get RetainerSell Addon for slot {slotType} for mannequin {mannequin.UniqueId}")
             .WithCondition(task =>
             {
                 if (AddonHelper.TryGetReadyAddon("RetainerSell", out var addon))
@@ -357,9 +369,9 @@ public static class SellingProcess
                 }
                 return false;
             })
-            .EnqueueTo(Service.TaskQueue);
+            .Enqueue();
 
-        TaskBuilder.Create("Confirm Selling Item")
+        configurator.Create($"Confirm Selling Item for slot {slotType} for mannequin {mannequin.UniqueId}")
             .WithCondition(task =>
             {
                 if (AddonHelper.TryGetReadyAddon("RetainerSell", out var addon))
@@ -369,14 +381,16 @@ public static class SellingProcess
                 }
                 return false;
             })
-            .EnqueueTo(Service.TaskQueue);
+            .Enqueue();
 
-        TaskBuilder.AddDelayMilliseconds(500, Service.TaskQueue);
+        configurator.Create()
+            .WithDelay(500.Milliseconds())
+            .Enqueue();
     }
 
-    private static unsafe void CloseMannequinMerchantSetting()
+    private static unsafe void CloseMannequinMerchantSetting(BatchTaskConfigurator configurator, Mannequin mannequin)
     {
-        TaskBuilder.Create("Close Mannequin Merchant Setting")
+        configurator.Create($"Close Mannequin Merchant Setting for mannequin {mannequin.UniqueId}")
             .WithCondition(task =>
             {
                 if (!AddonHelper.TryGetReadyAddon("MerchantSetting", out var addon))
@@ -385,9 +399,9 @@ public static class SellingProcess
                 Callback.Fire(addon, true, 11, 0);
                 return true;
             })
-            .EnqueueTo(Service.TaskQueue);
+            .Enqueue();
 
-        TaskBuilder.Create("Close Mannequin Merchant Setting")
+        configurator.Create($"Close Mannequin Merchant Setting for mannequin {mannequin.UniqueId}")
             .WithCondition(task =>
             {
                 if (!AddonHelper.TryGetReadyAddon("SelectString", out var addon))
@@ -396,6 +410,6 @@ public static class SellingProcess
                 Callback.Fire(addon, true, 6);
                 return true;
             })
-            .EnqueueTo(Service.TaskQueue);
+            .Enqueue();
     }
 }

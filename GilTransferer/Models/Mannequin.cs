@@ -1,10 +1,10 @@
 using GilTransferer.Enums;
+using Newtonsoft.Json;
 using NoireLib.Helpers;
 using NoireLib.Models;
 using System;
 using System.Collections.Generic;
 using System.Numerics;
-using System.Text.Json.Serialization;
 
 namespace GilTransferer.Models;
 
@@ -102,14 +102,9 @@ public class Mannequin
         ChamberOrApartmentNumber = chamberOrApartmentNumber;
         PlayerForEstateTPOverride = playerForEstateTPOverride;
 
-        // Initialize all slots
         foreach (SlotType slotType in Enum.GetValues<SlotType>())
-        {
             if (!Slots.ContainsKey(slotType))
-            {
                 Slots[slotType] = new MannequinSlot(slotType);
-            }
-        }
     }
 
     public bool Equals(Mannequin other, bool ignorePosition = false)

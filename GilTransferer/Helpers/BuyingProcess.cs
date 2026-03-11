@@ -12,6 +12,7 @@ using GilTransferer.Models;
 using Lumina.Excel.Sheets;
 using NoireLib;
 using NoireLib.Helpers;
+using NoireLib.Helpers.ObjectExtensions;
 using NoireLib.TaskQueue;
 using System;
 using System.Collections.Generic;
@@ -29,7 +30,7 @@ public static class BuyingProcess
     private sealed record PendingCharacterPurchase(Scenario Scenario, Mannequin Mannequin, MannequinSlot MannequinSlot);
 
     private static readonly Queue<PendingCharacterPurchase> PendingPurchases = new();
-    private static string? _pendingScenarioId;
+    private static Guid? _pendingScenarioId;
 
     /// <summary>
     ///  Processes all character purchases for the given scenario.
@@ -111,10 +112,10 @@ public static class BuyingProcess
             {
                 var localPlayer = NoireService.ObjectTable.LocalPlayer;
                 if (localPlayer != null && localPlayer.Name.TextValue == assignedCharacter.PlayerName &&
-                    localPlayer.HomeWorld.Value.Name.ExtractText() == assignedCharacter.Homeworld)
+                    localPlayer.HomeWorld.Value.Name.ExtractText() == assignedCharacter.HomeWorld)
                     return;
 
-                var errorCode = Service.LifestreamIPC.ChangeCharacter(assignedCharacter.PlayerName, assignedCharacter.Homeworld);
+                var errorCode = Service.LifestreamIPC.ChangeCharacter(assignedCharacter.PlayerName, assignedCharacter.HomeWorld);
                 if (errorCode != ErrorCode.Success)
                     throw new Exception($"Failed to change character: {errorCode}");
             })
@@ -130,7 +131,7 @@ public static class BuyingProcess
                     return false;
 
                 bool isCorrectPlayer = localPlayer.Name.TextValue == assignedCharacter.PlayerName &&
-                       localPlayer.HomeWorld.Value.Name.ExtractText() == assignedCharacter.Homeworld;
+                       localPlayer.HomeWorld.Value.Name.ExtractText() == assignedCharacter.HomeWorld;
 
                 bool occupied = CommonHelper.IsOccupied();
 
@@ -140,14 +141,14 @@ public static class BuyingProcess
 
         TaskBuilder.AddDelayMilliseconds(2000, Service.TaskQueue);
 
-        TaskBuilder.Create($"Moving to world {playerForEstateTp.Homeworld}")
+        TaskBuilder.Create($"Moving to world {playerForEstateTp.HomeWorld}")
             .WithAction(task =>
             {
                 var localPlayer = NoireService.ObjectTable.LocalPlayer;
-                if (localPlayer != null && localPlayer.CurrentWorld.Value.Name.ExtractText() == playerForEstateTp.Homeworld)
+                if (localPlayer != null && localPlayer.CurrentWorld.Value.Name.ExtractText() == playerForEstateTp.HomeWorld)
                     return;
 
-                Service.LifestreamIPC.ChangeWorld(playerForEstateTp.Homeworld);
+                Service.LifestreamIPC.ChangeWorld(playerForEstateTp.HomeWorld);
             })
             .WithCondition(task =>
             {
@@ -156,7 +157,7 @@ public static class BuyingProcess
                 if (localPlayer == null)
                     return false;
 
-                bool correctWorld = localPlayer.CurrentWorld.Value.Name.ExtractText() == playerForEstateTp.Homeworld;
+                bool correctWorld = localPlayer.CurrentWorld.Value.Name.ExtractText() == playerForEstateTp.HomeWorld;
                 bool occupied = NoireService.Condition.Any(ConditionFlag.BetweenAreas);
 
                 return correctWorld && !occupied;
@@ -260,9 +261,8 @@ public static class BuyingProcess
 
                 return true;
             })
+            .WithDelay(2.Seconds())
             .EnqueueTo(Service.TaskQueue);
-
-        TaskBuilder.AddDelayMilliseconds(500, Service.TaskQueue);
 
         // Initially to check if in the right plot, but this check has been removed
         // Now it's used as a "security" to make sure the closest door is the one in the plot I guess?

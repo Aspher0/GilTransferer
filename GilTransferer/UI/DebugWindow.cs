@@ -91,16 +91,8 @@ public class DebugWindow : Window, IDisposable
         {
             using (ImRaii.Child("##AutoRetainerAPIChild", new Vector2(-1, 200), true))
             {
-                var CIDs = Service.RegisteredCharacters;
-
-                foreach (var cid in CIDs)
-                {
-                    var charData = Service.GetOfflineCharacterData(cid);
-                    if (charData == null)
-                        continue;
-
-                    ImGui.TextWrapped($"Character: {charData.Name} has {charData.Gil} gil(s)");
-                }
+                foreach (var characterData in Service.OfflineCharacterData)
+                    ImGui.TextWrapped($"Character: {characterData.Value.Name} has {characterData.Value.Gil} gil(s)");
             }
         }
 
@@ -113,12 +105,6 @@ public class DebugWindow : Window, IDisposable
             {
                 var isBusy = Service.LifestreamIPC.IsBusy();
                 ImGui.TextUnformatted($"Lifestream IPC Busy: {(isBusy ? "Yes" : "No")}");
-
-                var currentPlotInfos = Service.LifestreamIPC.GetCurrentPlotInfo();
-                if (currentPlotInfos != null)
-                {
-                    ImGui.TextUnformatted($"Lifestream IPC Current Plot Info: {currentPlotInfos.Value.Kind} W{currentPlotInfos.Value.Ward + 1} P{currentPlotInfos.Value.Plot + 1}");
-                }
 
                 if (localPlayer != null)
                 {

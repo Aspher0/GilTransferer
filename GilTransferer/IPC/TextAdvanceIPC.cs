@@ -59,10 +59,10 @@ public class TextAdvanceIPC
 
     [EzIPC("EnableExternalControl")] public Func<string, ExternalTerritoryConfig, bool> _enableExternalControl;
 
-    public bool EnableExternalControl(ExternalTerritoryConfig config)
+    public bool EnableExternalControl()
     {
         if (IsActive())
-            return _enableExternalControl.Invoke("GilTransferer", config);
+            return _enableExternalControl.Invoke("GilTransferer", new());
         return false;
     }
 
